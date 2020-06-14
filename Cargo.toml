@@ -1,0 +1,21 @@
+[package]
+name = "vocage"
+version = "0.1.0"
+authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.1"
+serde = "1.0.111"
+serde_json = "1.0.55"
+serde_derive = "1.0.111"
+csv = "1.1.3"
+md5 = "0.7.0"
+rand = "0.7.3"
+regex = "1.3.9"
+ansi_term = "0.12.1"
+dirs = "2.0.2"
+serde_yaml = "0.8.13"
+simple-error = "0.2.1"
