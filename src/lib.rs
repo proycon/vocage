@@ -22,10 +22,12 @@ use md5::{compute,Digest};
 use std::path::{Path,PathBuf};
 use std::iter::FromIterator;
 use rand::seq::SliceRandom;
+use self::simple_error::SimpleError;
+
 
 /// Vocabulary Item data structure
 #[derive(Serialize, Deserialize)]
-pub struct VocaItem {
+pub struct VocaCard {
     #[serde(skip)]
     pub id: String,
     #[serde(default)] //deserialise missing fields to default empty values
@@ -47,7 +49,7 @@ pub struct VocaItem {
 pub struct VocaSet {
     #[serde(skip)]
     pub filename: String,
-    pub items: Vec<VocaItem>
+    pub cards: Vec<VocaCard>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,7 +60,7 @@ pub struct VocaSession {
     pub set_filename: String,
     ///Deck names
     pub deck_names: Vec<String>,
-    ///mapping of deck index to vocaitem IDs
+    ///mapping of deck index to vocacard IDs
     pub decks: Vec<Vec<String>>,
     ///Number of times answered correctly (i.e. moved to the next deck)
     pub correct: HashMap<String,u32>,
@@ -66,16 +68,22 @@ pub struct VocaSession {
     pub incorrect: HashMap<String,u32>,
     ///Last presentation by random pick method
     pub lastvisit: HashMap<String,u64>,
+    #[serde(skip)]
+    pub deck_index: Option<usize>, //the selected deck
+    #[serde(skip)]
+    pub card_index: Option<usize>, //the selected card
+    #[serde(skip)]
+    pub set: Option<VocaSet>,
 }
 
-///we implement the Display trait so we can print VocaItems
-impl fmt::Display for VocaItem {
+///we implement the Display trait so we can print VocaCards
+impl fmt::Display for VocaCard {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,"{}",self.words.join(" / "))
     }
 }
 
-impl VocaItem {
+impl VocaCard {
     pub fn compute_id(&mut self) {
         let id_string: String = format!("{}|{}|{}", self.words.join(" / "), self.transcriptions.join(" / "), self.translations.join(" / "));
         let id = md5::compute(id_string.as_bytes());
@@ -96,7 +104,7 @@ impl VocaItem {
     }
 
     ///Prints a vocaitem
-    pub fn print(self: &VocaItem, phon: bool, translation: bool, example: bool) {
+    pub fn print(self: &VocaCard, phon: bool, translation: bool, example: bool) {
         println!("{}", self.words.join(" | "));
         if phon {
             println!("{}", self.transcriptions.join(" | "));
@@ -110,22 +118,47 @@ impl VocaItem {
     }
 }
 
+pub struct CardIterator<'a> {
+    pub session: &'a VocaSession,
+    pub deck_index: usize, //the selected deck
+    pub card_index: usize, //the selected card
+}
+
+impl<'a> Iterator for CardIterator<'a> {
+    type Item = &'a VocaCard;
+
+    fn next(&mut self) -> Option<Self::Item>  {
+        if self.card_index < self.session.decks[self.deck_index].len() {
+            let card_id = self.session.decks[self.deck_index][self.card_index].as_str();
+            self.card_index += 1;
+            let card = if let Some(set) = self.session.set.as_ref() {
+                set.get(card_id)
+            } else {
+                None
+            };
+            card
+        } else {
+            None
+        }
+    }
+}
+
 impl VocaSet {
     /// Parse the vocabulary data file (JSON or YAML) into the VocaSet structure
-    pub fn parse(filename: &str) -> Result<VocaSet, Box<dyn Error>> {
+    pub fn from_file(filename: &str) -> Result<VocaSet, Box<dyn Error>> {
         let data = fs::read_to_string(filename)?;
         if filename.ends_with(".json") {
             let mut data: VocaSet = serde_json::from_str(data.as_str())?;
             data.filename = filename.to_owned();
-            for item in data.items.iter_mut() {
-                item.compute_id();
+            for card in data.cards.iter_mut() {
+                card.compute_id();
             }
             Ok(data)
         } else if filename.ends_with(".yml") || filename.ends_with(".yaml") {
             let mut data: VocaSet = serde_yaml::from_str(data.as_str())?;
             data.filename = filename.to_owned();
-            for item in data.items.iter_mut() {
-                item.compute_id();
+            for card in data.cards.iter_mut() {
+                card.compute_id();
             }
             Ok(data)
         } else {
@@ -143,7 +176,7 @@ impl VocaSet {
         } else {
             Vec::new()
         };
-        let item = VocaItem {
+        let item = VocaCard {
             words: vec!(word),
             translations: vec!(translation.map(|s:&str| s.to_string()).unwrap_or(String::new())),
             transcriptions: vec!(transcription.map(|s:&str| s.to_string()).unwrap_or(String::new())),
@@ -165,20 +198,20 @@ impl VocaSet {
         }
     }
 
-    /// Show the contents of the Vocabulary List; prints to to standard output
+    /// Show the contents of the Vocabulary Set; prints to to standard output
     pub fn show(&self, withtranslation: bool, withtranscription: bool, filtertags: Option<&Vec<&str>>, withtags: bool, withexample: bool, withcomment: bool) {
-        for item in self.items.iter() {
-            if item.filter(filtertags) {
-                print!("{}", item);
-                if withtranscription { print!("\t{}", item.transcriptions.join(" | ")) }
-                if withtranslation { print!("\t{}", item.translations.join(" | ")) }
-                if withexample { print!("\t{}", item.examples.join("\n")) }
-                if withcomment { print!("\t{}", item.comments.join("\n")) }
+        for card in self.cards.iter() {
+            if card.filter(filtertags) {
+                print!("{}", card);
+                if withtranscription { print!("\t{}", card.transcriptions.join(" | ")) }
+                if withtranslation { print!("\t{}", card.translations.join(" | ")) }
+                if withexample { print!("\t{}", card.examples.join("\n")) }
+                if withcomment { print!("\t{}", card.comments.join("\n")) }
                 if withtags {
                     print!("\t");
-                    for (i, tag) in item.tags.iter().enumerate() {
+                    for (i, tag) in card.tags.iter().enumerate() {
                         print!("{}", tag);
-                        if i < item.tags.len() - 1 {
+                        if i < card.tags.len() - 1 {
                             print!(",")
                         }
                     }
@@ -194,9 +227,9 @@ impl VocaSet {
             .flexible(true)
             .has_headers(false)
             .from_writer(io::stdout());
-        for item in self.items.iter() {
-            if item.filter(filtertags) {
-                wtr.serialize(item)?;
+        for card in self.cards.iter() {
+            if card.filter(filtertags) {
+                wtr.serialize(card)?;
             }
         };
         wtr.flush()?;
@@ -205,7 +238,7 @@ impl VocaSet {
 
     ///Select a word
     /*
-    pub fn pick(&self, deck, session: &mut VocaSession, filtertags: Option<&Vec<&str>>, visit: bool) -> &VocaItem {
+    pub fn pick(&self, deck, session: &mut VocaSession, filtertags: Option<&Vec<&str>>, visit: bool) -> &VocaCard {
         let sum: f64 = self.items.iter().map(|item| {
             if item.filter(filtertags) {
                 session.score(item.id_as_string().as_str())
@@ -240,32 +273,32 @@ impl VocaSet {
     */
 
     pub fn contains(&self, id: &str) -> bool {
-        for item in self.items.iter() {
-            if item.id.as_str() == id {
+        for card in self.cards.iter() {
+            if card.id.as_str() == id {
                 return true;
             }
         }
         false
     }
 
-    pub fn get(&self, id: &str) -> Option<&VocaItem> {
-        for item in self.items.iter() {
-            if item.id.as_str() == id {
-                return Some(item);
+    pub fn get(&self, id: &str) -> Option<&VocaCard> {
+        for card in self.cards.iter() {
+            if card.id.as_str() == id {
+                return Some(card);
             }
         }
         None
     }
 
     ///Lookup a word
-    pub fn find(&self, word: &str) -> Option<&VocaItem> {
-        self.items.iter().find(|x| { x.words.contains(&word.to_string()) })
+    pub fn find(&self, word: &str) -> Option<&VocaCard> {
+        self.cards.iter().find(|x| { x.words.contains(&word.to_string()) })
     }
 }
 
 
 impl VocaSession {
-    pub fn new(filename: String, set: &VocaSet, deck_names: Vec<String>) -> VocaSession {
+    pub fn new(filename: String, set: VocaSet, deck_names: Vec<String>) -> VocaSession {
         let mut decks: Vec<Vec<String>> = Vec::new();
         for _ in 0..deck_names.len() {
             decks.push(vec!());
@@ -277,39 +310,50 @@ impl VocaSession {
             decks: decks,
             correct: HashMap::new(),
             incorrect: HashMap::new(),
-            lastvisit: HashMap::new()
+            lastvisit: HashMap::new(),
+            deck_index: None,
+            card_index: None,
+            set: Some(set),
         };
-        session.populate_decks(set);
+        session.populate_decks();
         session
     }
 
-    pub fn populate_decks(&mut self, set: &VocaSet) {
-        //collects all IDs from all decks
-        let mut found = HashSet::new();
-        for deck in self.decks.iter_mut() {
-            deck.retain( |item_id| set.contains(item_id) ); //remove orphans
-            for item_id in deck.iter() {
-                found.insert(item_id.clone());
+    pub fn populate_decks(&mut self) {
+        if let Some(set) = self.set {
+            //collects all IDs from all decks
+            let mut found = HashSet::new();
+            for deck in self.decks.iter_mut() {
+                deck.retain( |card_id| set.contains(card_id) ); //remove orphans
+                for card_id in deck.iter() {
+                    found.insert(card_id.clone());
+                }
             }
-        }
-        //add new items to first deck
-        for item in set.items.iter() {
-            if !found.contains(&item.id) {
-                //append to first deck
-                self.decks[0].push(item.id.clone())
+            //add new cards to first deck
+            for card in set.cards.iter() {
+                if !found.contains(&card.id) {
+                    //append to first deck
+                    self.decks[0].push(card.id.clone())
+                }
             }
         }
     }
 
     /// Load session file
-    pub fn load(filename: &str) -> Result<VocaSession, Box<dyn Error>> {
+    pub fn from_file(filename: &str) -> Result<VocaSession, Box<dyn Error>> {
         let data = fs::read_to_string(filename)?;
         let data: VocaSession = serde_json::from_str(data.as_str())?; //(shadowing)
         Ok(data)
     }
 
+    pub fn load_data(&mut self) -> Result<&VocaSet, Box<dyn Error>> {
+        let set = VocaSet::from_file(self.set_filename.as_str())?;
+        self.set = Some(set);
+        Ok(self.set.as_ref().unwrap())
+    }
+
     ///Save a session file
-    pub fn save(&self, filename: &str) -> std::io::Result<()> {
+    pub fn to_file(&self, filename: &str) -> std::io::Result<()> {
         let data: String = serde_json::to_string(self)?;
         fs::write(filename, data)
     }
@@ -327,40 +371,83 @@ impl VocaSession {
         self.lastvisit.insert(item_id.to_owned(),now);
     }
 
-    //shuffle a deck randomly
-    pub fn shuffle(&mut self, deck_index: usize) {
-        let mut rng = rand::thread_rng();
-        if deck_index < self.decks.len() {
+    pub fn shuffle(&mut self) -> Result<(),SimpleError> {
+        if let Some(deck_index) = self.deck_index {
+            let mut rng = rand::thread_rng();
             self.decks[deck_index].shuffle(&mut rng);
+            Ok(())
+        } else {
+            Err(SimpleError::new("No deck selected"))
         }
     }
 
-    ///Promote the item at in the specified deck and item index to the next deck
+    pub fn select_deck(&mut self, deck_index: usize) -> Result<(),SimpleError> {
+        if deck_index > 1 && deck_index < self.deck_names.len() {
+            self.deck_index = Some(deck_index - 1);
+            Ok(())
+        } else {
+            Err(SimpleError::new("Invalid deck"))
+        }
+    }
+
+    pub fn select_card(&mut self, card_index: usize) -> Result<(),SimpleError> {
+        if let Some(deck_index) = self.deck_index {
+            if card_index > 0 && card_index < self.decks[deck_index].len() -1 {
+                self.card_index = Some(card_index - 1);
+                Ok(())
+            } else {
+                Err(SimpleError::new("Invalid card index"))
+            }
+        } else {
+            Err(SimpleError::new("No deck selected"))
+        }
+    }
+
+    ///Iterate over all cards in the currently selected deck
+    pub fn iter(&self) -> Result<CardIterator,SimpleError> {
+        if let Some(deck_index) = self.deck_index {
+            Ok(CardIterator {
+                session: self,
+                deck_index: deck_index,
+                card_index: 0,
+            })
+        } else {
+            Err(SimpleError::new("No deck selected"))
+        }
+    }
+
+    ///Promote the card at in the specified deck and card index to the next deck
     ///This corresponds to a correct answer
-    pub fn promote(&mut self, deck_index: usize, item_index: usize) {
-        if let Some(deck) = self.decks.get_mut(deck_index) {
-            if let item_id = deck.remove(item_index) {
-                self.visit(item_id.as_str());
-                *self.correct.entry(item_id.clone()).or_insert(0) += 1;
+    pub fn promote(&mut self) -> Result<(), SimpleError> {
+        if let (Some(deck_index), Some(card_index)) = (self.deck_index, self.card_index) {
+            if let Some(deck) = self.decks.get_mut(deck_index) {
+                let card_id = deck.remove(card_index);
+                self.visit(card_id.as_str());
+                *self.correct.entry(card_id.clone()).or_insert(0) += 1;
                 if let Some(nextdeck) = self.decks.get_mut(deck_index + 1) {
-                    nextdeck.push(item_id);
+                    nextdeck.push(card_id);
                 }
+                return Ok(());
             }
         }
+        Err(SimpleError::new("Invalid deck or card"))
     }
 
-    ///Demote the item at in the specified deck and item index to the previous deck
+    ///Demote the card at in the specified deck and card index to the previous deck
     ///This corresponds to an incorrect answer
-    pub fn demote(&mut self, deck_index: usize, item_index: usize) {
-        if let Some(deck) = self.decks.get_mut(deck_index) {
-            if let item_id = deck.remove(item_index) {
-                self.visit(item_id.as_str());
-                *self.incorrect.entry(item_id.clone()).or_insert(0) += 1;
+    pub fn demote(&mut self) -> Result<(), SimpleError> {
+        if let (Some(deck_index), Some(card_index)) = (self.deck_index, self.card_index) {
+            if let Some(deck) = self.decks.get_mut(deck_index) {
+                let card_id = deck.remove(card_index);
+                self.visit(card_id.as_str());
+                *self.incorrect.entry(card_id.clone()).or_insert(0) += 1;
                 if let Some(prevdeck) = self.decks.get_mut(deck_index - 1) {
-                    prevdeck.push(item_id);
+                    prevdeck.push(card_id);
                 }
+                return Ok(());
             }
         }
+        Err(SimpleError::new("Invalid deck or card"))
     }
 }
 
