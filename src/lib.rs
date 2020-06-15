@@ -68,18 +68,39 @@ pub struct VocaSession {
     pub incorrect: HashMap<String,u32>,
     ///Last presentation by random pick method
     pub lastvisit: HashMap<String,u64>,
-    #[serde(skip)]
+    pub mode: VocaMode,
     pub deck_index: Option<usize>, //the selected deck
-    #[serde(skip)]
     pub card_index: Option<usize>, //the selected card
+    pub settings: HashSet<String>,
     #[serde(skip)]
     pub set: Option<VocaSet>,
+}
+
+#[derive(Serialize, Deserialize,Debug)]
+pub enum VocaMode {
+    None,
+    Flashcards,
+    OpenQuiz,
+    ChoiceQuiz,
+    MatchQuiz,
+}
+
+impl Default for VocaMode {
+    fn default() -> VocaMode {
+        VocaMode::None
+    }
+}
+
+impl fmt::Display for VocaMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,"{:?}",self)
+    }
 }
 
 ///we implement the Display trait so we can print VocaCards
 impl fmt::Display for VocaCard {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"{}",self.words.join(" / "))
+        write!(f,"{}",self.words.join(" | "))
     }
 }
 
@@ -298,14 +319,14 @@ impl VocaSet {
 
 
 impl VocaSession {
-    pub fn new(filename: String, set: VocaSet, deck_names: Vec<String>) -> VocaSession {
+    pub fn new(filename: String, set_filename: String, deck_names: Vec<String>) -> Result<VocaSession, Box<dyn Error>> {
         let mut decks: Vec<Vec<String>> = Vec::new();
         for _ in 0..deck_names.len() {
             decks.push(vec!());
         }
         let mut session = VocaSession {
             filename: filename,
-            set_filename: set.filename.clone(),
+            set_filename: set_filename,
             deck_names: deck_names,
             decks: decks,
             correct: HashMap::new(),
@@ -313,14 +334,17 @@ impl VocaSession {
             lastvisit: HashMap::new(),
             deck_index: None,
             card_index: None,
-            set: Some(set),
+            set: None,
+            mode: VocaMode::None,
+            settings: HashSet::new(),
         };
+        session.load_data()?;
         session.populate_decks();
-        session
+        Ok(session)
     }
 
     pub fn populate_decks(&mut self) {
-        if let Some(set) = self.set {
+        if let Some(set) = &self.set {
             //collects all IDs from all decks
             let mut found = HashSet::new();
             for deck in self.decks.iter_mut() {
@@ -356,6 +380,10 @@ impl VocaSession {
     pub fn to_file(&self, filename: &str) -> std::io::Result<()> {
         let data: String = serde_json::to_string(self)?;
         fs::write(filename, data)
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        self.to_file(self.filename.as_str())
     }
 
     ///Return the 'score' for an item, this corresponds to the probability it is presented, so
@@ -449,6 +477,24 @@ impl VocaSession {
         }
         Err(SimpleError::new("Invalid deck or card"))
     }
+
+    pub fn set(&mut self, setting: String) {
+        self.settings.insert(setting);
+    }
+
+    pub fn unset(&mut self, setting: &str) {
+        self.settings.remove(setting);
+    }
+
+    pub fn toggle(&mut self, setting: String) -> bool {
+        if self.settings.contains(&setting) {
+            self.settings.remove(&setting);
+            false
+        } else {
+            self.settings.insert(setting);
+            true
+        }
+    }
 }
 
 
@@ -482,8 +528,8 @@ pub fn getsessionfile(name: &str, sessionpath: PathBuf) -> PathBuf {
 }
 
 /// Returns an index of available sessions
-pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<PathBuf> {
-    let mut index: Vec<PathBuf> = Vec::new();
+pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
+    let mut index: Vec<String> = Vec::new();
     let configpath;
     if let Some(configpath_some) = configpath_opt {
         configpath = configpath_some;
@@ -494,7 +540,7 @@ pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<PathBuf> {
     if datapath.exists() {
         for file in datapath.read_dir().expect("Unable to read dir") {
             if let Ok(file) = file {
-                index.push(file.path());
+                index.push(file.file_name().into_string().unwrap());
             }
         }
     }
@@ -502,8 +548,8 @@ pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Returns an index of available vocabulary sets
-pub fn getdataindex(configpath_opt: Option<PathBuf>) -> Vec<PathBuf> {
-    let mut index: Vec<PathBuf> = Vec::new();
+pub fn getdataindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
+    let mut index: Vec<String> = Vec::new();
     let configpath;
     if let Some(configpath_some) = configpath_opt {
         configpath = configpath_some;
@@ -514,7 +560,7 @@ pub fn getdataindex(configpath_opt: Option<PathBuf>) -> Vec<PathBuf> {
     if datapath.exists() {
         for file in datapath.read_dir().expect("Unable to read dir") {
             if let Ok(file) = file {
-                index.push(file.path());
+                index.push(file.file_name().into_string().unwrap());
             }
         }
     }
