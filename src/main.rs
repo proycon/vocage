@@ -48,7 +48,7 @@ impl SessionInterface for VocaSession {
         };
         let response: Vec<&str> = response.split(" ").collect();
         if !response.is_empty() {
-            let handled = match response[0] {
+            handled = match response[0] {
                 "set" => {
                     if let Some(key) = response.get(1) {
                         self.set(key.to_string());
@@ -88,12 +88,14 @@ fn getinputline() -> Option<String> {
     print!(">>> ");
     std::io::stdout().flush().unwrap();
     let stdin = std::io::stdin();
-    let response = stdin.lock().lines().next().unwrap().unwrap(); //read one line only
-    if response != "" {
-        return Some(response);
-    } else {
-        return None;
+    if let Some(response) = stdin.lock().lines().next() { //read one line only
+        if let Ok(response) = response {
+            if response != "" {
+                return Some(response);
+            }
+        }
     }
+    None
 }
 
 fn handle_response(response: String, mut session: Option<VocaSession>, datadir: &str, sessiondir: &str) -> Option<VocaSession> {
@@ -182,13 +184,40 @@ fn main() {
             .takes_value(true)
             .default_value(defaultsessiondir.to_str().unwrap())
         )
+        .arg(clap::Arg::with_name("eval")
+            .help("Evaluate a statement, multiple statement can be separated by a semicolon")
+            .short("e")
+            .long("eval")
+            .takes_value(true))
         .get_matches();
 
-    //TODO: make directories
     let sessiondir: &str = argmatches.value_of("sessiondir").unwrap();
     let datadir: &str = argmatches.value_of("datadir").unwrap();
+    if !PathBuf::from(sessiondir).exists() {
+        fs::create_dir_all(&sessiondir).expect("Unable to create session directory");
+    }
+    if !PathBuf::from(datadir).exists() {
+        fs::create_dir_all(&datadir).expect("Unable to create data directory");
+
+    }
 
     let mut opt_session: Option<VocaSession> = None;
+    if let Some(eval) = argmatches.value_of("eval") {
+        let script: Vec<String> = eval.split(";").map(|s| s.trim().to_owned() ).collect();
+        for statement in script {
+            opt_session = if let Some(mut session) = opt_session {
+                if !session.handle_response(statement.clone(), datadir, sessiondir) {
+                    handle_response(statement, Some(session), datadir, sessiondir )
+                } else {
+                    Some(session)
+                }
+            } else {
+                handle_response(statement, opt_session, datadir, sessiondir )
+            }
+
+        }
+    }
+
     loop {
         opt_session = if let Some(mut session) = opt_session {
             if let Some(response) = session.prompt() {
