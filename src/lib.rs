@@ -76,7 +76,7 @@ pub struct VocaSession {
     pub set: Option<VocaSet>,
 }
 
-#[derive(Serialize, Deserialize,Debug)]
+#[derive(Serialize, Deserialize,Clone,Copy,Debug)]
 pub enum VocaMode {
     None,
     Flashcards,
@@ -88,6 +88,18 @@ pub enum VocaMode {
 impl Default for VocaMode {
     fn default() -> VocaMode {
         VocaMode::None
+    }
+}
+
+impl VocaMode {
+    pub fn from_str(s: &str) -> Result<VocaMode,SimpleError> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(Self::None),
+            "flashcards" => Ok(Self::Flashcards),
+            "openquiz" => Ok(Self::OpenQuiz),
+            "choicequiz" => Ok(Self::ChoiceQuiz),
+            _ => Err(SimpleError::new("not a valid mode"))
+        }
     }
 }
 
@@ -143,6 +155,7 @@ pub struct CardIterator<'a> {
     pub session: &'a VocaSession,
     pub deck_index: usize, //the selected deck
     pub card_index: usize, //the selected card
+    pub multideck: bool,
 }
 
 impl<'a> Iterator for CardIterator<'a> {
@@ -159,7 +172,12 @@ impl<'a> Iterator for CardIterator<'a> {
             };
             card
         } else {
-            None
+            if self.multideck && self.deck_index < self.session.decks.len() {
+                self.deck_index += 1;
+                self.next() //recurse
+            } else {
+                None
+            }
         }
     }
 }
@@ -409,13 +427,26 @@ impl VocaSession {
         }
     }
 
+    pub fn select_deck_by_name(&mut self, deck_name: &str) -> Result<(),SimpleError> {
+        if let Some(deck_index) = self.deck_names.iter().position(|s| s == deck_name) {
+            self.select_deck(deck_index + 1)
+        } else {
+            Err(SimpleError::new("No deck with that name exists"))
+        }
+    }
+
     pub fn select_deck(&mut self, deck_index: usize) -> Result<(),SimpleError> {
         if deck_index > 1 && deck_index < self.deck_names.len() {
             self.deck_index = Some(deck_index - 1);
+            self.card_index = None;
             Ok(())
         } else {
             Err(SimpleError::new("Invalid deck"))
         }
+    }
+
+    pub fn unselect_deck(&mut self) {
+        self.deck_index = None;
     }
 
     pub fn select_card(&mut self, card_index: usize) -> Result<(),SimpleError> {
@@ -432,15 +463,21 @@ impl VocaSession {
     }
 
     ///Iterate over all cards in the currently selected deck
-    pub fn iter(&self) -> Result<CardIterator,SimpleError> {
+    pub fn iter(&self) -> CardIterator {
         if let Some(deck_index) = self.deck_index {
-            Ok(CardIterator {
+            CardIterator {
                 session: self,
                 deck_index: deck_index,
                 card_index: 0,
-            })
+                multideck: false,
+            }
         } else {
-            Err(SimpleError::new("No deck selected"))
+            CardIterator {
+                session: self,
+                deck_index: 0,
+                card_index: 0,
+                multideck: true,
+            }
         }
     }
 
@@ -477,6 +514,89 @@ impl VocaSession {
         }
         Err(SimpleError::new("Invalid deck or card"))
     }
+
+    pub fn next_deck(&mut self) -> Result<(), SimpleError> {
+        if let Some(deck_index) = self.deck_index.as_mut() {
+            if *deck_index < self.decks.len() {
+                *deck_index += 1;
+            } else {
+                bail!("No further decks left");
+            }
+        } else {
+            if !self.decks.is_empty() {
+                self.deck_index = Some(0);
+                self.card_index = None;
+                self.next_card()?;
+            } else {
+                bail!("There are no decks at all");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn previous_deck(&mut self) -> Result<(), SimpleError> {
+        if let Some(deck_index) = self.deck_index.as_mut() {
+            if *deck_index > 0 {
+                *deck_index -= 1;
+            } else {
+                bail!("You are at the first deck");
+            }
+        } else {
+            if !self.decks.is_empty() {
+                self.deck_index = Some(0);
+                self.card_index = None;
+                self.next_card()?;
+            } else {
+                bail!("There are no decks at all");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn next_card(&mut self) -> Result<(), SimpleError> {
+        if let Some(deck_index) = self.deck_index {
+            if let Some(card_index) = self.card_index.as_mut() {
+                if *card_index < self.decks[deck_index].len() {
+                    *card_index += 1;
+                } else {
+                    self.next_deck()?;  //will recurse back into this function if needed
+                }
+            } else {
+                if self.decks[deck_index].is_empty() {
+                    eprintln!("Deck #{} is empty", deck_index + 1);
+                    self.next_deck()?;  //will recurse back into this function if needed
+                } else {
+                    self.card_index = Some(0)
+                }
+            }
+        } else {
+            self.next_deck()?;  //will recurse back into this function if needed
+        }
+        Ok(())
+    }
+
+    pub fn previous_card(&mut self) -> Result<(), SimpleError> {
+        if let Some(deck_index) = self.deck_index {
+            if let Some(card_index) = self.card_index.as_mut() {
+                if *card_index > 0 {
+                    *card_index -= 1;
+                } else {
+                    self.previous_deck()?;  //will recurse back into this function if needed
+                }
+            } else {
+                if self.decks[deck_index].is_empty() {
+                    eprintln!("Deck #{} is empty", deck_index + 1);
+                    self.previous_deck()?;  //will recurse back into this function if needed
+                } else {
+                    self.card_index = Some(self.decks[deck_index].len())
+                }
+            }
+        } else {
+            self.previous_deck()?;  //will recurse back into this function if needed
+        }
+        Ok(())
+    }
+
 
     pub fn set(&mut self, setting: String) {
         self.settings.insert(setting);

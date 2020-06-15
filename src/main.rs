@@ -6,6 +6,7 @@ extern crate serde_derive;
 extern crate regex;
 extern crate ansi_term;
 extern crate dirs;
+extern crate simple_error;
 
 use std::iter::Iterator;
 use std::io::{BufRead,Write};
@@ -16,6 +17,7 @@ use clap::{App, Arg, SubCommand};
 use regex::Regex;
 use rand::{thread_rng,Rng};
 use ansi_term::Colour::{Red,Green, Blue};
+use self::simple_error::SimpleError;
 use vocage::*;
 
 
@@ -33,6 +35,9 @@ impl SessionInterface for VocaSession {
             print!("  Deck: #{}/{} {}", deck_index, self.decks.len(), self.deck_names.get(deck_index).expect("getting name for deck") );
             if let Some(card_index) = self.card_index {
                 print!("  Card: #{}/{}", card_index, self.decks[deck_index].len() );
+            } else {
+                //this is not really a state we should encounter much
+                print!("  Card: none/{}", self.decks[deck_index].len() );
             }
             println!("");
         } else {
@@ -77,12 +82,79 @@ impl SessionInterface for VocaSession {
                     }
                     true
                 },
+                "deck" => {
+                    if let Some(deck_value) = response.get(1) {
+                        if deck_value.chars().all(|c| c.is_numeric()) {
+                            if let Ok(deck_index) = deck_value.parse::<usize>() {
+                               self.select_deck(deck_index);
+                            }
+                        } else {
+                           self.select_deck_by_name(deck_value);
+                        }
+                    } else {
+                        eprintln!("Provide a deck name or number")
+                    }
+                    true
+                },
+                "nodeck" => {
+                    self.unselect_deck();
+                    true
+                },
+                "nextdeck" | "nd"  => {
+                    self.next_deck().map_err(|e| eprintln!("{}",e) );
+                    true
+
+                }
+                "prevdeck" | "pd" => {
+                    self.previous_deck().map_err(|e| eprintln!("{}",e) );
+                    true
+                }
+                "decks" => {
+                    for (i, deck_name) in self.deck_names.iter().enumerate() {
+                        println!("#{}: {}", i+1, deck_name);
+                    }
+                    true
+                },
+                "cards" => {
+                    for (i, card) in self.iter().enumerate() {
+                        println!("#{}: {}", i+1, card);
+                    }
+                    true
+                },
+                "promote" => {
+                    self.promote().map_err(|e| eprintln!("{}",e) );
+                    true
+                },
+                "demote" => {
+                    self.demote().map_err(|e| eprintln!("{}",e) );
+                    true
+                },
+                "next" | "n"  => {
+                    self.next_card().map_err(|e| eprintln!("{}",e) );
+                    true
+                },
+                "previous" | "prev" | "p"  => {
+                    self.previous_card().map_err(|e| eprintln!("{}",e) );
+                    true
+                }
+                "mode" => {
+                    if let Some(mode_string) = response.get(1) {
+                        match VocaMode::from_str(mode_string) {
+                            Ok(mode) => self.mode = mode,
+                            Err(err) => eprintln!("{}", err)
+                        }
+                    } else {
+                        eprintln!("No mode specified")
+                    }
+                    true
+                },
                 _ => false,
             };
         }
         handled
     }
 }
+
 
 fn getinputline() -> Option<String> {
     print!(">>> ");
@@ -198,7 +270,6 @@ fn main() {
     }
     if !PathBuf::from(datadir).exists() {
         fs::create_dir_all(&datadir).expect("Unable to create data directory");
-
     }
 
     let mut opt_session: Option<VocaSession> = None;
