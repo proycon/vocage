@@ -389,7 +389,7 @@ impl VocaSession {
     }
 
     pub fn load_data(&mut self) -> Result<&VocaSet, Box<dyn Error>> {
-        let set = VocaSet::from_file(self.set_filename.as_str())?;
+        let set = VocaSet::from_file(self.set_filename.as_str()).map_err(|err| SimpleError::new(format!("Tried to load data {}: {}", self.set_filename.as_str(), err).to_string()))?;
         self.set = Some(set);
         Ok(self.set.as_ref().unwrap())
     }
@@ -629,12 +629,8 @@ pub fn defaultsessiondir() -> PathBuf {
     PathBuf::from(dirs::config_dir().expect("Unable to find configuration dir")).join("vocage").join("sessions")
 }
 
-pub fn getdatafile(name: &str, datapath: PathBuf) -> Option<PathBuf> {
-    let datafile = datapath.join(name.to_owned());
-    match datafile.exists() {
-        true => Some(datafile),
-        false => None
-    }
+pub fn getdatafile(name: &str, datapath: PathBuf) -> PathBuf {
+    datapath.join(name.to_owned())
 }
 
 pub fn getsessionfile(name: &str, sessionpath: PathBuf) -> PathBuf {
@@ -670,13 +666,13 @@ pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
 /// Returns an index of available vocabulary sets
 pub fn getdataindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
     let mut index: Vec<String> = Vec::new();
-    let configpath;
+    let mut datapath;
     if let Some(configpath_some) = configpath_opt {
-        configpath = configpath_some;
+        datapath = configpath_some;
     } else {
-        configpath = dirs::config_dir().expect("Unable to find configuration dir");
+        datapath = dirs::config_dir().expect("Unable to find configuration dir");
+        datapath = PathBuf::from(datapath).join("vocage").join("data");
     }
-    let datapath = PathBuf::from(configpath).join("vocage").join("data");
     if datapath.exists() {
         for file in datapath.read_dir().expect("Unable to read dir") {
             if let Ok(file) = file {

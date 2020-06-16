@@ -7,6 +7,7 @@ extern crate regex;
 extern crate ansi_term;
 extern crate dirs;
 extern crate simple_error;
+extern crate chrono;
 
 use std::iter::Iterator;
 use std::io::{BufRead,Write};
@@ -18,6 +19,8 @@ use regex::Regex;
 use rand::{thread_rng,Rng};
 use ansi_term::Colour::{Red,Green, Blue};
 use self::simple_error::SimpleError;
+use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::prelude::*;
 use vocage::*;
 
 
@@ -115,17 +118,17 @@ impl SessionInterface for VocaSession {
                     }
                     true
                 },
-                "cards" => {
+                "cards" | "ls" => {
                     for (i, card) in self.iter().enumerate() {
                         println!("#{}: {}", i+1, card);
                     }
                     true
                 },
-                "promote" => {
+                "promote" | "correct" | "+" => {
                     self.promote().map_err(|e| eprintln!("{}",e) );
                     true
                 },
-                "demote" => {
+                "demote" | "incorrect" | "-" => {
                     self.demote().map_err(|e| eprintln!("{}",e) );
                     true
                 },
@@ -137,6 +140,10 @@ impl SessionInterface for VocaSession {
                     self.previous_card().map_err(|e| eprintln!("{}",e) );
                     true
                 }
+                "shuffle" | "x"  => {
+                    self.shuffle().map_err(|e| eprintln!("{}",e) );
+                    true
+                },
                 "mode" => {
                     if let Some(mode_string) = response.get(1) {
                         match VocaMode::from_str(mode_string) {
@@ -148,6 +155,23 @@ impl SessionInterface for VocaSession {
                     }
                     true
                 },
+                "help" => {
+                    println!("cards                                  -- Show a list of all cards in the deck (or all cards that exist if no deck is selected)");
+                    println!("deck [name|index]                      -- Switch to the deck by name or number");
+                    println!("demote                                 -- Demote the current card to the previous deck");
+                    println!("mode flashcards                        -- Switch to flashcards mode");
+                    println!("mode openquiz                          -- Switch to open quiz mode");
+                    println!("mode multiquiz                         -- Switch to multiple-choice quiz mode");
+                    println!("next                                   -- Present the next card");
+                    println!("nextdeck                               -- Switch to the next deck");
+                    println!("nodeck                                 -- Deselect a deck");
+                    println!("previous                               -- Present the previous card");
+                    println!("prevdeck                               -- Switch to the previous deck");
+                    println!("promote                                -- Promote the current card to the next deck");
+                    println!("shuffle                                -- Shuffle the deck (randomizing the card order)");
+                    println!("----");
+                    false //we condider this unhandled so the handling falls back and also output the general commands later on
+                }
                 _ => false,
             };
         }
@@ -176,7 +200,13 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
         match response[0] {
             "q" | "exit" | "quit" => {
                 if let Some(session) = session {
-                    session.save();
+                    match session.save() {
+                        Ok(()) => exit(0),
+                        Err(err) => {
+                            eprintln!("{}",err);
+                            exit(1)
+                        }
+                    }
                 }
                 exit(0);
             },
@@ -195,10 +225,15 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
             "resume" => {
                 //resume an existing session
                 if let Some(filename) = response.get(1) {
-                    if let Ok(loaded_session) = VocaSession::from_file(filename) {
+                    let filename: String = if PathBuf::from(filename).exists() {
+                        filename.to_string()
+                    } else {
+                        getsessionfile(filename, PathBuf::from(sessiondir)).to_string_lossy().to_string()
+                    };
+                    if let Ok(loaded_session) = VocaSession::from_file(filename.as_str()) {
                         session = Some(loaded_session);
                     } else {
-                        eprintln!("Unable to load session");
+                        eprintln!("Unable to load session file: {}", filename);
                     }
                 } else {
                     eprintln!("No session file specified as first argument");
@@ -207,24 +242,50 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
             "start" => {
                 //start a new session
                 if let Some(filename) = response.get(1) {
-                    let session_filename: String = if let Some(session_filename) = response.get(2) {
+                    let mut session_filename: String = if let Some(session_filename) = response.get(2) {
                         session_filename.to_string()
                     } else {
                         let mut session_filename: String = String::new();
                         session_filename.push_str(PathBuf::from(filename).file_stem().unwrap().to_str().unwrap());
+                        session_filename = session_filename.replace(".json","");
+                        session_filename = session_filename.replace(".yaml","");
+                        session_filename.push_str("-");
+                        let dt: DateTime<Local> = Local::now();
+                        session_filename.push_str(dt.format("%Y%m%d-%H%M").to_string().as_str());
                         session_filename
+                    };
+                    if !session_filename.ends_with(".json") {
+                        session_filename.push_str(".json");
+                    }
+                    if !session_filename.starts_with(".") && !session_filename.starts_with("/") {
+                        session_filename = getsessionfile(session_filename.as_str(), PathBuf::from(sessiondir)).to_string_lossy().to_string();
+                    }
+                    let filename = if !filename.starts_with(".") && !filename.starts_with("/") {
+                        getdatafile(filename,  PathBuf::from(datadir)).to_string_lossy().to_string()
+                    } else {
+                        filename.to_string()
                     };
                     let deck_names: Vec<String> = if let Some(deck_names) = response.get(3) {
                         deck_names.split(",").map(|s| s.to_owned()).collect()
                     } else {
                         vec!("new".to_string(),"short".to_string(),"medium".to_string(),"long".to_string(),"done".to_string())
                     };
-                    if let Ok(new_session) = VocaSession::new(session_filename, filename.to_string(), deck_names) {
-                        session = Some(new_session);
-                    } else {
-                        eprintln!("Unable to load session");
+                    match VocaSession::new(session_filename, filename.to_string(), deck_names) {
+                        Ok(new_session) => {
+                            session = Some(new_session);
+                        },
+                        Err(err) => {
+                            eprintln!("Unable to start session: {}", err);
+                        }
                     }
                 }
+            },
+            "help" => {
+                println!("quit                                   -- Save session & quit");
+                println!("resume [session]                       -- Load and resume an existing session");
+                println!("sets                                   -- List all sets");
+                println!("sessions                               -- List all session");
+                println!("start [set] [[session]] [[deck_names]] -- Start a new session using the specified set");
             },
             _ => {
                 eprintln!("Invalid command");
