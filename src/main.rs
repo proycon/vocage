@@ -17,7 +17,7 @@ use std::fs;
 use clap::{App, Arg, SubCommand};
 use regex::Regex;
 use rand::{thread_rng,Rng};
-use ansi_term::Colour::{Red,Green, Blue};
+use ansi_term::Colour;
 use self::simple_error::SimpleError;
 use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::prelude::*;
@@ -25,44 +25,107 @@ use vocage::*;
 
 
 trait SessionInterface {
-    fn prompt(&self) -> Option<String>;
-    fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str) -> bool;
+    fn prompt(&self, present_card: bool) -> Option<String>;
+    fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str, present_card: &mut bool) -> bool;
+    fn show_card(&self);
 }
 
 impl SessionInterface for VocaSession {
-    fn prompt(&self) -> Option<String> {
-        print!("Session: {}  ", PathBuf::from(self.filename.as_str()).file_name().unwrap().to_str().unwrap());
-        print!("Data: {}  ", PathBuf::from(self.set_filename.as_str()).file_name().unwrap().to_str().unwrap());
-        print!("Mode: {}", self.mode);
-        if let Some(deck_index) = self.deck_index {
-            print!("  Deck: #{}/{} {}", deck_index, self.decks.len(), self.deck_names.get(deck_index).expect("getting name for deck") );
-            if let Some(card_index) = self.card_index {
-                print!("  Card: #{}/{}", card_index, self.decks[deck_index].len() );
+    fn show_card(&self) {
+        let colour = self.settings.contains("col");
+        if let Some(card) = self.card() {
+            if colour {
+                println!("{}", Colour::Green.bold().paint(card.words.join(" | ")));
             } else {
-                //this is not really a state we should encounter much
-                print!("  Card: none/{}", self.decks[deck_index].len() );
+                println!("{}", card.words.join(" | "));
+            }
+            if self.settings.contains("showphon") {
+                if colour  {
+                    println!("{}", Colour::Cyan.paint(card.transcriptions.join(" | ")));
+                } else {
+                    println!("{}", card.transcriptions.join(" | "));
+                }
+            }
+            if self.settings.contains("showexample") {
+                if colour  {
+                    println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
+                } else {
+                    println!("{}", card.examples.join("\n"));
+                }
+            }
+            if self.settings.contains("showcomment") {
+                println!("{}", card.comments.join(" | "));
+            }
+            if self.settings.contains("showtags") {
+                if colour  {
+                    println!("{}", Colour::Purple.paint(card.comments.join(" | ")));
+                } else {
+                    println!("{}", card.comments.join(" | "));
+                }
+            }
+        }
+
+    }
+
+    fn prompt(&self, present_card: bool) -> Option<String> {
+        if present_card {
+            let colour = self.settings.contains("col");
+            if colour {
+                print!("{}: {}  ", Colour::White.bold().paint("Session"), Colour::White.bold().paint(PathBuf::from(self.filename.as_str()).file_name().unwrap().to_str().unwrap()));
+                print!("{}: {}  ", Colour::White.bold().paint("Dataset"), Colour::White.bold().paint(PathBuf::from(self.set_filename.as_str()).file_name().unwrap().to_str().unwrap()));
+            } else {
+                print!("Session: {}  ", PathBuf::from(self.filename.as_str()).file_name().unwrap().to_str().unwrap());
+                print!("Dataset: {}  ", PathBuf::from(self.set_filename.as_str()).file_name().unwrap().to_str().unwrap());
             }
             println!("");
-        } else {
-            print!("  Deck: none");
-            println!("");
+            if colour {
+                print!("{}: {}", Colour::Blue.bold().paint("Mode"), Colour::Purple.bold().paint(self.mode.to_string()));
+            } else {
+                print!("Mode: {}", self.mode);
+            }
+            if let Some(deck_index) = self.deck_index {
+                if colour {
+                    print!("  Deck: #{}/{} {}", deck_index+1, self.decks.len(), Colour::Blue.bold().paint(self.deck_names.get(deck_index).expect("getting name for deck")) );
+                } else {
+                    print!("  Deck: #{}/{} {}", deck_index+1, self.decks.len(), self.deck_names.get(deck_index).expect("getting name for deck") );
+                }
+                if let Some(card_index) = self.card_index {
+                    print!("  Card: #{}/{}", card_index+1, self.decks[deck_index].len() );
+                    println!("");
+                    self.show_card();
+                } else {
+                    //this is not really a state we should encounter much
+                    print!("  Card: none/{}", self.decks[deck_index].len() );
+                    println!("");
+                }
+            } else {
+                print!("  Deck: none");
+                println!("");
+            }
         }
         getinputline()
     }
 
-    fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str) -> bool {
+    fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str, present_card: &mut bool) -> bool {
         let mut handled = match self.mode {
             _ => false,
         };
+        let colour = self.settings.contains("col");
         let response: Vec<&str> = response.split(" ").collect();
         if !response.is_empty() {
+            *present_card = false;
             handled = match response[0] {
+                "show" | "s" => {
+                    *present_card = true;
+                    true
+                },
                 "set" => {
                     if let Some(key) = response.get(1) {
                         self.set(key.to_string());
                     } else {
                         eprintln!("No setting specified")
                     }
+                    *present_card = true;
                     true
                 },
                 "unset" => {
@@ -71,6 +134,7 @@ impl SessionInterface for VocaSession {
                     } else {
                         eprintln!("No setting specified")
                     }
+                    *present_card = true;
                     true
                 },
                 "toggle" => {
@@ -83,9 +147,10 @@ impl SessionInterface for VocaSession {
                     } else {
                         eprintln!("No setting specified")
                     }
+                    *present_card = true;
                     true
                 },
-                "deck" => {
+                "deck" | "d" => {
                     if let Some(deck_value) = response.get(1) {
                         if deck_value.chars().all(|c| c.is_numeric()) {
                             if let Ok(deck_index) = deck_value.parse::<usize>() {
@@ -97,6 +162,7 @@ impl SessionInterface for VocaSession {
                     } else {
                         eprintln!("Provide a deck name or number")
                     }
+                    *present_card = true;
                     true
                 },
                 "nodeck" => {
@@ -105,17 +171,33 @@ impl SessionInterface for VocaSession {
                 },
                 "nextdeck" | "nd"  => {
                     self.next_deck().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
                     true
-
                 }
                 "prevdeck" | "pd" => {
                     self.previous_deck().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
                     true
                 }
                 "decks" => {
                     for (i, deck_name) in self.deck_names.iter().enumerate() {
-                        println!("#{}: {}", i+1, deck_name);
+                        println!("#{}: {}\t\t[{} card(s)]", i+1, deck_name, self.decks[i].len());
                     }
+                    true
+                },
+                "card" | "c" => {
+                    if let Some(card_value) = response.get(1) {
+                        if card_value.chars().all(|c| c.is_numeric()) {
+                            if let Ok(card_index) = card_value.parse::<usize>() {
+                               self.select_card(card_index);
+                            }
+                        } else {
+                            eprintln!("Provide a card index");
+                        }
+                    } else {
+                        eprintln!("Provide a card index");
+                    }
+                    *present_card = true;
                     true
                 },
                 "cards" | "ls" => {
@@ -126,25 +208,73 @@ impl SessionInterface for VocaSession {
                 },
                 "promote" | "correct" | "+" => {
                     self.promote().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
                     true
                 },
                 "demote" | "incorrect" | "-" => {
                     self.demote().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
                     true
                 },
                 "next" | "n"  => {
                     self.next_card().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
                     true
                 },
                 "previous" | "prev" | "p"  => {
                     self.previous_card().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
                     true
                 }
                 "shuffle" | "x"  => {
                     self.shuffle().map_err(|e| eprintln!("{}",e) );
+                    *present_card = true;
+                    true
+                },
+                "flip" | "translation" | "translations" | "t"  => {
+                    if let Some(card) = self.card() {
+                        println!("{}", card.translations.join("\n"));
+                    }
+                    true
+                },
+                "phon" | "transcription" | "transcriptions" | "ph"  => {
+                    if let Some(card) = self.card() {
+                        if colour {
+                            println!("{}", Colour::Cyan.paint(card.transcriptions.join("\n")));
+                        } else {
+                            println!("{}", card.transcriptions.join("\n"));
+                        }
+                    }
+                    true
+                },
+                "examples" | "example" | "ex"  => {
+                    if let Some(card) = self.card() {
+                        if colour {
+                            println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
+                        } else {
+                            println!("{}", card.examples.join("\n"));
+                        }
+                    }
+                    true
+                },
+                "tags"  => {
+                    if let Some(card) = self.card() {
+                        if colour {
+                            println!("{}", Colour::Purple.paint(card.tags.join("\n")));
+                        } else {
+                            println!("{}", card.tags.join("\n"));
+                        }
+                    }
+                    true
+                },
+                "comments" | "comment"  => {
+                    if let Some(card) = self.card() {
+                        println!("{}", card.comments.join("\n"));
+                    }
                     true
                 },
                 "mode" => {
+                    *present_card = true;
                     if let Some(mode_string) = response.get(1) {
                         match VocaMode::from_str(mode_string) {
                             Ok(mode) => self.mode = mode,
@@ -156,19 +286,32 @@ impl SessionInterface for VocaSession {
                     true
                 },
                 "help" => {
+                    println!("card | c [index]                       -- Switch to the card by number");
                     println!("cards                                  -- Show a list of all cards in the deck (or all cards that exist if no deck is selected)");
-                    println!("deck [name|index]                      -- Switch to the deck by name or number");
-                    println!("demote                                 -- Demote the current card to the previous deck");
+                    println!("deck | d [name|index]                  -- Switch to the deck by name or number");
+                    println!("demote | -                             -- Demote the current card to the previous deck");
+                    println!("example | ex                           -- Show examples");
+                    println!("comments                               -- Show comments");
                     println!("mode flashcards                        -- Switch to flashcards mode");
                     println!("mode openquiz                          -- Switch to open quiz mode");
                     println!("mode multiquiz                         -- Switch to multiple-choice quiz mode");
-                    println!("next                                   -- Present the next card");
-                    println!("nextdeck                               -- Switch to the next deck");
+                    println!("next | n                               -- Present the next card");
+                    println!("nextdeck | nd                          -- Switch to the next deck");
                     println!("nodeck                                 -- Deselect a deck");
-                    println!("previous                               -- Present the previous card");
-                    println!("prevdeck                               -- Switch to the previous deck");
-                    println!("promote                                -- Promote the current card to the next deck");
-                    println!("shuffle                                -- Shuffle the deck (randomizing the card order)");
+                    println!("phon | ph                              -- Show phonetic transcription");
+                    println!("previous | p                           -- Present the previous card");
+                    println!("prevdeck | pd                          -- Switch to the previous deck");
+                    println!("promote | +                            -- Promote the current card to the next deck");
+                    println!("show | s                               -- Show the current card again");
+                    println!("shuffle | x                            -- Shuffle the deck (randomizing the card order)");
+                    println!("set [setting]                          -- Enable a setting");
+                    println!("     set showphon                      -- Show phonetic transcriptions when displaying a card");
+                    println!("     set showexample                   -- Show examples when displaying a card");
+                    println!("     set showcomment                   -- Show comments when displaying a card");
+                    println!("     set col                           -- Use colour display");
+                    println!("tags                                   -- Show tags");
+                    println!("translation | t                        -- Show translation");
+                    println!("unset [setting]                        -- Disable a setting");
                     println!("----");
                     false //we condider this unhandled so the handling falls back and also output the general commands later on
                 }
@@ -201,7 +344,10 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
             "q" | "exit" | "quit" => {
                 if let Some(session) = session {
                     match session.save() {
-                        Ok(()) => exit(0),
+                        Ok(()) => {
+                            eprintln!("Session saved: {}", session.filename.as_str());
+                            exit(0)
+                        }
                         Err(err) => {
                             eprintln!("{}",err);
                             exit(1)
@@ -209,6 +355,20 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                     }
                 }
                 exit(0);
+            },
+            "save" => {
+                if let Some(session) = session {
+                    match session.save() {
+                        Ok(()) => {
+                            eprintln!("Session saved: {}", session.filename.as_str());
+                            exit(0)
+                        }
+                        Err(err) => {
+                            eprintln!("{}",err);
+                            exit(1)
+                        }
+                    }
+                }
             },
             "ls" | "list" | "sets" => {
                 let sets: Vec<String> = getdataindex(Some(PathBuf::from(datadir)));
@@ -230,10 +390,13 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                     } else {
                         getsessionfile(filename, PathBuf::from(sessiondir)).to_string_lossy().to_string()
                     };
-                    if let Ok(loaded_session) = VocaSession::from_file(filename.as_str()) {
-                        session = Some(loaded_session);
-                    } else {
-                        eprintln!("Unable to load session file: {}", filename);
+                    match VocaSession::from_file(filename.as_str()) {
+                         Ok(loaded_session) => {
+                            session = Some(loaded_session);
+                         },
+                         Err(err)  => {
+                            eprintln!("Unable to load session file {}: {}", filename, err);
+                        }
                     }
                 } else {
                     eprintln!("No session file specified as first argument");
@@ -338,7 +501,7 @@ fn main() {
         let script: Vec<String> = eval.split(";").map(|s| s.trim().to_owned() ).collect();
         for statement in script {
             opt_session = if let Some(mut session) = opt_session {
-                if !session.handle_response(statement.clone(), datadir, sessiondir) {
+                if !session.handle_response(statement.clone(), datadir, sessiondir, &mut false) {
                     handle_response(statement, Some(session), datadir, sessiondir )
                 } else {
                     Some(session)
@@ -350,10 +513,11 @@ fn main() {
         }
     }
 
+    let mut present_card = true;
     loop {
         opt_session = if let Some(mut session) = opt_session {
-            if let Some(response) = session.prompt() {
-                if !session.handle_response(response.clone(), datadir, sessiondir) {
+            if let Some(response) = session.prompt(present_card) {
+                if !session.handle_response(response.clone(), datadir, sessiondir, &mut present_card) {
                     handle_response(response, Some(session), datadir, sessiondir )
                 } else {
                     Some(session)

@@ -162,7 +162,7 @@ impl<'a> Iterator for CardIterator<'a> {
     type Item = &'a VocaCard;
 
     fn next(&mut self) -> Option<Self::Item>  {
-        if self.card_index < self.session.decks[self.deck_index].len() {
+        if self.card_index + 1< self.session.decks[self.deck_index].len()  {
             let card_id = self.session.decks[self.deck_index][self.card_index].as_str();
             self.card_index += 1;
             let card = if let Some(set) = self.session.set.as_ref() {
@@ -172,7 +172,7 @@ impl<'a> Iterator for CardIterator<'a> {
             };
             card
         } else {
-            if self.multideck && self.deck_index < self.session.decks.len() {
+            if self.multideck && self.deck_index + 1 < self.session.decks.len() {
                 self.deck_index += 1;
                 self.next() //recurse
             } else {
@@ -384,8 +384,10 @@ impl VocaSession {
     /// Load session file
     pub fn from_file(filename: &str) -> Result<VocaSession, Box<dyn Error>> {
         let data = fs::read_to_string(filename)?;
-        let data: VocaSession = serde_json::from_str(data.as_str())?; //(shadowing)
-        Ok(data)
+        let mut session: VocaSession = serde_json::from_str(data.as_str())?; //(shadowing)
+        session.load_data()?;
+        session.populate_decks();
+        Ok(session)
     }
 
     pub fn load_data(&mut self) -> Result<&VocaSet, Box<dyn Error>> {
@@ -506,8 +508,10 @@ impl VocaSession {
                 let card_id = deck.remove(card_index);
                 self.visit(card_id.as_str());
                 *self.incorrect.entry(card_id.clone()).or_insert(0) += 1;
-                if let Some(prevdeck) = self.decks.get_mut(deck_index - 1) {
-                    prevdeck.push(card_id);
+                if deck_index > 0 {
+                    if let Some(prevdeck) = self.decks.get_mut(deck_index - 1) {
+                        prevdeck.push(card_id);
+                    }
                 }
                 return Ok(());
             }
@@ -615,6 +619,18 @@ impl VocaSession {
             true
         }
     }
+
+    pub fn card(&self) -> Option<&VocaCard> {
+        if let Some(deck_index) = self.deck_index {
+            if let Some(card_index) = self.card_index {
+                if let Some(set) = self.set.as_ref() {
+                    let card_id = &self.decks[deck_index][card_index];
+                    return set.get( card_id.as_str() );
+                }
+            }
+        }
+        None
+    }
 }
 
 
@@ -646,13 +662,13 @@ pub fn getsessionfile(name: &str, sessionpath: PathBuf) -> PathBuf {
 /// Returns an index of available sessions
 pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
     let mut index: Vec<String> = Vec::new();
-    let configpath;
+    let mut datapath;
     if let Some(configpath_some) = configpath_opt {
-        configpath = configpath_some;
+        datapath = configpath_some;
     } else {
-        configpath = dirs::config_dir().expect("Unable to find configuration dir");
+        datapath = dirs::config_dir().expect("Unable to find configuration dir");
+        datapath = PathBuf::from(datapath).join("vocage").join("sessions");
     }
-    let datapath = PathBuf::from(configpath).join("vocage").join("sessions");
     if datapath.exists() {
         for file in datapath.read_dir().expect("Unable to read dir") {
             if let Ok(file) = file {
