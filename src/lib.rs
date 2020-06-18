@@ -69,9 +69,14 @@ pub struct VocaSession {
     ///Last presentation by random pick method
     pub lastvisit: HashMap<String,u64>,
     pub mode: VocaMode,
+    #[serde(default)]
     pub deck_index: Option<usize>, //the selected deck
+    #[serde(default)]
     pub card_index: Option<usize>, //the selected card
+    #[serde(default)]
     pub settings: HashSet<String>,
+    #[serde(default)]
+    pub settings_int: HashMap<String, usize>,
     #[serde(skip)]
     pub set: Option<VocaSet>,
 }
@@ -355,6 +360,7 @@ impl VocaSession {
             set: None,
             mode: VocaMode::None,
             settings: HashSet::new(),
+            settings_int: HashMap::new(),
         };
         session.load_data()?;
         session.populate_decks();
@@ -608,6 +614,14 @@ impl VocaSession {
 
     pub fn unset(&mut self, setting: &str) {
         self.settings.remove(setting);
+    }
+
+    pub fn set_int(&mut self, setting: String, value: usize) {
+        self.settings_int.insert(setting, value);
+    }
+
+    pub fn get_int(&mut self, setting: &str) -> Option<&usize> {
+        self.settings_int.get(setting)
     }
 
     pub fn toggle(&mut self, setting: String) -> bool {

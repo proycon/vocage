@@ -121,7 +121,17 @@ impl SessionInterface for VocaSession {
                 },
                 "set" => {
                     if let Some(key) = response.get(1) {
-                        self.set(key.to_string());
+                        if let Some(value) = response.get(2) {
+                            if value.chars().all(|c| c.is_numeric()) {
+                                if let Ok(value) = value.parse::<usize>() {
+                                    self.set_int(key.to_string(), value);
+                                }
+                            } else {
+                                eprintln!("Value should be numeric");
+                            }
+                        } else {
+                            self.set(key.to_string());
+                        }
                     } else {
                         eprintln!("No setting specified")
                     }
