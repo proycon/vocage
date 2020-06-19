@@ -77,6 +77,8 @@ pub struct VocaSession {
     pub settings: HashSet<String>,
     #[serde(default)]
     pub settings_int: HashMap<String, usize>,
+    #[serde(default)]
+    pub settings_str: HashMap<String, String>,
     #[serde(skip)]
     pub set: Option<VocaSet>,
 }
@@ -361,6 +363,7 @@ impl VocaSession {
             mode: VocaMode::None,
             settings: HashSet::new(),
             settings_int: HashMap::new(),
+            settings_str: HashMap::new(),
         };
         session.load_data()?;
         session.populate_decks();
@@ -620,8 +623,16 @@ impl VocaSession {
         self.settings_int.insert(setting, value);
     }
 
-    pub fn get_int(&mut self, setting: &str) -> Option<&usize> {
+    pub fn get_int(&self, setting: &str) -> Option<&usize> {
         self.settings_int.get(setting)
+    }
+
+    pub fn set_str(&mut self, setting: String, value: String) {
+        self.settings_str.insert(setting, value);
+    }
+
+    pub fn get_str(&self, setting: &str) -> Option<&str> {
+        self.settings_str.get(setting).map(|s| s.as_str())
     }
 
     pub fn toggle(&mut self, setting: String) -> bool {

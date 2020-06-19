@@ -27,44 +27,62 @@ use vocage::*;
 trait SessionInterface {
     fn prompt(&self, present_card: bool) -> Option<String>;
     fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str, present_card: &mut bool) -> bool;
-    fn show_card(&self);
+    fn show_card(&self, side: &str);
 }
 
 impl SessionInterface for VocaSession {
-    fn show_card(&self) {
+    fn show_card(&self, side: &str) {
         let colour = self.settings.contains("col");
-        if let Some(card) = self.card() {
-            if colour {
-                println!("{}", Colour::Green.bold().paint(card.words.join(" | ")));
-            } else {
-                println!("{}", card.words.join(" | "));
-            }
-            if self.settings.contains("showphon") {
-                if colour  {
-                    println!("{}", Colour::Cyan.paint(card.transcriptions.join(" | ")));
-                } else {
-                    println!("{}", card.transcriptions.join(" | "));
-                }
-            }
-            if self.settings.contains("showexample") {
-                if colour  {
-                    println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
-                } else {
-                    println!("{}", card.examples.join("\n"));
-                }
-            }
-            if self.settings.contains("showcomment") {
-                println!("{}", card.comments.join(" | "));
-            }
-            if self.settings.contains("showtags") {
-                if colour  {
-                    println!("{}", Colour::Purple.paint(card.comments.join(" | ")));
-                } else {
-                    println!("{}", card.comments.join(" | "));
-                }
-            }
-        }
 
+        if let Some(card) = self.card() {
+            let configuration = self.get_str(format!("{}.{}", self.mode, side).as_str()).unwrap_or(match (self.mode.to_string().as_str(),side) {
+                ("flashcards", "front") => "words",
+                ("choicequiz", "front") => "words,options",
+                ("openquiz", "front") => "words",
+                (_,"front") => "words",
+                (_,"back") => "translations",
+                (_,_) =>  "words"
+            });
+
+            let configuration: Vec<&str> = configuration.split(" ").collect();
+
+            for field in configuration.into_iter() {
+                match field {
+                    "word" | "words" => {
+                        if colour {
+                            println!("{}", Colour::Green.bold().paint(card.words.join(" | ")));
+                        } else {
+                            println!("{}", card.words.join(" | "));
+                        }
+                    },
+                    "phon" | "transcription" | "transcriptions" {
+                        if colour  {
+                            println!("{}", Colour::Cyan.paint(card.transcriptions.join(" | ")));
+                        } else {
+                            println!("{}", card.transcriptions.join(" | "));
+                        }
+                    },
+                    "example" | "examples" {
+                        if colour  {
+                            println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
+                        } else {
+                            println!("{}", card.examples.join("\n"));
+                        }
+                    },
+                    "comment" | "comments" {
+                        println!("{}", card.comments.join("\n"));
+                    },
+                    "tags" {
+                        if colour  {
+                            println!("{}", Colour::Purple.paint(card.comments.join(", ")));
+                        } else {
+                            println!("{}", card.comments.join(", "));
+                        }
+                    }
+                },
+            }
+
+        }
     }
 
     fn prompt(&self, present_card: bool) -> Option<String> {
@@ -92,7 +110,7 @@ impl SessionInterface for VocaSession {
                 if let Some(card_index) = self.card_index {
                     print!("  Card: #{}/{}", card_index+1, self.decks[deck_index].len() );
                     println!("");
-                    self.show_card();
+                    self.show_card("front");
                 } else {
                     //this is not really a state we should encounter much
                     print!("  Card: none/{}", self.decks[deck_index].len() );
@@ -117,6 +135,10 @@ impl SessionInterface for VocaSession {
             handled = match response[0] {
                 "show" | "s" => {
                     *present_card = true;
+                    true
+                },
+                "flip" | "f" => {
+                    self.show_card("back");
                     true
                 },
                 "set" => {
@@ -302,9 +324,11 @@ impl SessionInterface for VocaSession {
                     println!("demote | -                             -- Demote the current card to the previous deck");
                     println!("example | ex                           -- Show examples");
                     println!("comments                               -- Show comments");
-                    println!("mode flashcards                        -- Switch to flashcards mode");
-                    println!("mode openquiz                          -- Switch to open quiz mode");
-                    println!("mode multiquiz                         -- Switch to multiple-choice quiz mode");
+                    println!("flip | f                               -- Show the back of the current card (i.e. the translation/solution)");
+                    println!("mode [mode]                            -- Switch to the specified mode");
+                    println!("  mode flashcards                      -- Switch to flashcards mode");
+                    println!("  mode openquiz                        -- Switch to open quiz mode");
+                    println!("  mode multiquiz                       -- Switch to multiple-choice quiz mode");
                     println!("next | n                               -- Present the next card");
                     println!("nextdeck | nd                          -- Switch to the next deck");
                     println!("nodeck                                 -- Deselect a deck");
