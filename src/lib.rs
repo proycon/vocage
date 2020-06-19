@@ -68,7 +68,11 @@ pub struct VocaSession {
     pub incorrect: HashMap<String,u32>,
     ///Last presentation by random pick method
     pub lastvisit: HashMap<String,u64>,
-    pub mode: VocaMode,
+    pub mode: String,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub correct_option: usize,
     #[serde(default)]
     pub deck_index: Option<usize>, //the selected deck
     #[serde(default)]
@@ -83,38 +87,7 @@ pub struct VocaSession {
     pub set: Option<VocaSet>,
 }
 
-#[derive(Serialize, Deserialize,Clone,Copy,Debug)]
-pub enum VocaMode {
-    None,
-    Flashcards,
-    OpenQuiz,
-    ChoiceQuiz,
-    MatchQuiz,
-}
 
-impl Default for VocaMode {
-    fn default() -> VocaMode {
-        VocaMode::None
-    }
-}
-
-impl VocaMode {
-    pub fn from_str(s: &str) -> Result<VocaMode,SimpleError> {
-        match s.to_lowercase().as_str() {
-            "none" => Ok(Self::None),
-            "flashcards" => Ok(Self::Flashcards),
-            "openquiz" => Ok(Self::OpenQuiz),
-            "choicequiz" => Ok(Self::ChoiceQuiz),
-            _ => Err(SimpleError::new("not a valid mode"))
-        }
-    }
-}
-
-impl fmt::Display for VocaMode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"{:?}",self)
-    }
-}
 
 ///we implement the Display trait so we can print VocaCards
 impl fmt::Display for VocaCard {
@@ -282,12 +255,11 @@ impl VocaSet {
         Ok(())
     }
 
-    ///Select a word
-    /*
-    pub fn pick(&self, deck, session: &mut VocaSession, filtertags: Option<&Vec<&str>>, visit: bool) -> &VocaCard {
-        let sum: f64 = self.items.iter().map(|item| {
-            if item.filter(filtertags) {
-                session.score(item.id_as_string().as_str())
+    ///Pick a random card
+    pub fn pick(&self, session: &VocaSession, filtertags: Option<&Vec<&str>>) -> &VocaCard {
+        let sum: f64 = self.cards.iter().map(|card| {
+            if card.filter(filtertags) {
+                session.score(card.id.as_str())
             } else {
                 0.0
             }
@@ -295,28 +267,18 @@ impl VocaSet {
         let choice: f64 = rand::random::<f64>() * sum;
         let mut score: f64 = 0.0; //cummulative score
         let mut choiceindex: usize = 0;
-        for (i, item) in self.items.iter().enumerate() {
-            if item.filter(filtertags) {
-                if let Some(ref scoredata) = session {
-                    score += scoredata.score(item.id_as_string().as_str());
-                } else {
-                    score += 1.0;
-                }
+        for (i, card) in self.cards.iter().enumerate() {
+            if card.filter(filtertags) {
+                score += session.score(card.id.as_str());
                 if score >= choice {
                     choiceindex = i;
                     break;
                 }
             }
         }
-        let vocaitem = &self.items[choiceindex];
-        if visit {
-            if let Some(ref mut scoredata) = session {
-                scoredata.visit(vocaitem);
-            }
-        }
-        vocaitem
+        let vocacard = &self.cards[choiceindex];
+        vocacard
     }
-    */
 
     pub fn contains(&self, id: &str) -> bool {
         for card in self.cards.iter() {
@@ -360,10 +322,19 @@ impl VocaSession {
             deck_index: None,
             card_index: None,
             set: None,
-            mode: VocaMode::None,
-            settings: HashSet::new(),
-            settings_int: HashMap::new(),
-            settings_str: HashMap::new(),
+            mode: String::new(),
+            settings: [ "col".to_string() ].iter().cloned().collect(),
+            settings_int: [
+                ("optioncount", 5)
+            ].iter().map(|(x,y)| (x.to_string(),*y)).collect(),
+            settings_str: [
+                ("flashcards.front", "word,example"),
+                ("flashcards.back", "translation,transcription"),
+                ("multiquiz.front", "word,example,options"),
+                ("multiquiz.back", "translation,transcription"),
+                ("openquiz.front", "word,example"),
+                ("openquiz.back", "translation,transcription"),
+            ].iter().map(|(x,y)| (x.to_string(),y.to_string())).collect()
         };
         session.load_data()?;
         session.populate_decks();
@@ -415,8 +386,9 @@ impl VocaSession {
         self.to_file(self.filename.as_str())
     }
 
-    ///Return the 'score' for an item, this corresponds to the probability it is presented, so
-    ///the lower the score, the better a word is known
+    ///Return the 'score' for an item, this corresponds to the probability it is presented if
+    ///a deck is sorted by score, and also influences the chance a card is picked as a response
+    ///option; the lower the score, the better a word is known
     pub fn score(&self, id: &str) -> f64 {
         let correct = *self.correct.get(id).or(Some(&0)).unwrap() + 1;
         let incorrect = *self.incorrect.get(id).or(Some(&0)).unwrap() + 1;
@@ -655,6 +627,13 @@ impl VocaSession {
             }
         }
         None
+    }
+
+    pub fn pick_options(&self) {
+        let optioncount = self.settings_int.get("optioncount").unwrap_or(&5);
+        for i in 0..*optioncount {
+        }
+
     }
 }
 

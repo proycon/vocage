@@ -55,31 +55,37 @@ impl SessionInterface for VocaSession {
                             println!("{}", card.words.join(" | "));
                         }
                     },
-                    "phon" | "transcription" | "transcriptions" {
+                    "phon" | "transcription" | "transcriptions" => {
                         if colour  {
                             println!("{}", Colour::Cyan.paint(card.transcriptions.join(" | ")));
                         } else {
                             println!("{}", card.transcriptions.join(" | "));
                         }
                     },
-                    "example" | "examples" {
+                    "example" | "examples" => {
                         if colour  {
                             println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
                         } else {
                             println!("{}", card.examples.join("\n"));
                         }
                     },
-                    "comment" | "comments" {
+                    "comment" | "comments" => {
                         println!("{}", card.comments.join("\n"));
                     },
-                    "tags" {
+                    "tags" => {
                         if colour  {
                             println!("{}", Colour::Purple.paint(card.comments.join(", ")));
                         } else {
                             println!("{}", card.comments.join(", "));
                         }
+                    },
+                    "options" => {
+                        self.pick_options();
+                    },
+                    _ => {
+                        eprintln!("(One of the configured fields is unknown and can't be handled: {}", field);
                     }
-                },
+                }
             }
 
         }
@@ -97,7 +103,7 @@ impl SessionInterface for VocaSession {
             }
             println!("");
             if colour {
-                print!("{}: {}", Colour::Blue.bold().paint("Mode"), Colour::Purple.bold().paint(self.mode.to_string()));
+                print!("{}: {}", Colour::Blue.bold().paint("Mode"), Colour::Purple.bold().paint(self.mode.as_str()));
             } else {
                 print!("Mode: {}", self.mode);
             }
@@ -139,6 +145,34 @@ impl SessionInterface for VocaSession {
                 },
                 "flip" | "f" => {
                     self.show_card("back");
+                    true
+                },
+                "settings" => {
+                    for setting in self.settings.iter() {
+                        println!("{}", setting);
+                    }
+                    for (setting, value) in self.settings_int.iter() {
+                        println!("{}={}", setting, value);
+                    }
+                    for (setting, value) in self.settings_str.iter() {
+                        println!("{}=\"{}\"", setting, value);
+                    }
+                    true
+                }
+                "get" => {
+                    if let Some(key) = response.get(1) {
+                        if self.settings.contains(*key) {
+                            println!("enabled");
+                        } else if let Some(value) = self.settings_int.get(*key) {
+                            println!("{}", value);
+                        } else if let Some(value) = self.settings_str.get(*key) {
+                            println!("{}", value);
+                        } else {
+                            println!("disabled");
+                        }
+                    } else {
+                        eprintln!("Specify a setting to get");
+                    }
                     true
                 },
                 "set" => {
@@ -307,10 +341,11 @@ impl SessionInterface for VocaSession {
                 },
                 "mode" => {
                     *present_card = true;
-                    if let Some(mode_string) = response.get(1) {
-                        match VocaMode::from_str(mode_string) {
-                            Ok(mode) => self.mode = mode,
-                            Err(err) => eprintln!("{}", err)
+                    if let Some(mode) = response.get(1) {
+                        if self.settings_str.contains_key(format!("{}.front", mode).as_str()) && self.settings_str.contains_key(format!("{}.back", mode).as_str()) {
+                            self.mode = mode.to_string();
+                        } else {
+                            eprintln!("Invalid mode (you must have {}.front and {}.back defined for this mode to work)", mode, mode)
                         }
                     } else {
                         eprintln!("No mode specified")
@@ -325,6 +360,7 @@ impl SessionInterface for VocaSession {
                     println!("example | ex                           -- Show examples");
                     println!("comments                               -- Show comments");
                     println!("flip | f                               -- Show the back of the current card (i.e. the translation/solution)");
+                    println!("get [setting]                          -- Get a setting");
                     println!("mode [mode]                            -- Switch to the specified mode");
                     println!("  mode flashcards                      -- Switch to flashcards mode");
                     println!("  mode openquiz                        -- Switch to open quiz mode");
@@ -343,6 +379,7 @@ impl SessionInterface for VocaSession {
                     println!("     set showexample                   -- Show examples when displaying a card");
                     println!("     set showcomment                   -- Show comments when displaying a card");
                     println!("     set col                           -- Use colour display");
+                    println!("settings                               -- Outputs all setting");
                     println!("tags                                   -- Show tags");
                     println!("translation | t                        -- Show translation");
                     println!("unset [setting]                        -- Disable a setting");
