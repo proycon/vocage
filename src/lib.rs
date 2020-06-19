@@ -22,6 +22,7 @@ use md5::{compute,Digest};
 use std::path::{Path,PathBuf};
 use std::iter::FromIterator;
 use rand::seq::SliceRandom;
+use rand::{thread_rng,Rng};
 use self::simple_error::SimpleError;
 
 
@@ -103,16 +104,12 @@ impl VocaCard {
         self.id = format!("{:x}",id);
     }
 
-    pub fn filter(&self, filtertags: Option<&Vec<&str>>) -> bool {
-        match filtertags {
-            Some(tags) => match tags.is_empty() {
-               false => {
-                   //do the actual matching
-                   self.tags.iter().any(|tag| tags.contains(&tag.as_str()))
-               },
-               true => true
-            },
-            None => true
+    pub fn filter(&self, filtertags: &Vec<&str>) -> bool {
+        if filtertags.is_empty() {
+            true
+        } else {
+           //do the actual matching
+           self.tags.iter().any(|tag| filtertags.contains(&tag.as_str()))
         }
     }
 
@@ -218,7 +215,7 @@ impl VocaSet {
     }
 
     /// Show the contents of the Vocabulary Set; prints to to standard output
-    pub fn show(&self, withtranslation: bool, withtranscription: bool, filtertags: Option<&Vec<&str>>, withtags: bool, withexample: bool, withcomment: bool) {
+    pub fn show(&self, withtranslation: bool, withtranscription: bool, filtertags: &Vec<&str>, withtags: bool, withexample: bool, withcomment: bool) {
         for card in self.cards.iter() {
             if card.filter(filtertags) {
                 print!("{}", card);
@@ -241,7 +238,7 @@ impl VocaSet {
     }
 
     ///Output all data as CSV
-    pub fn csv(&self, filtertags: Option<&Vec<&str>>) -> Result<(), Box<dyn Error>> {
+    pub fn csv(&self, filtertags: &Vec<&str>) -> Result<(), Box<dyn Error>> {
         let mut wtr = csv::WriterBuilder::new()
             .flexible(true)
             .has_headers(false)
@@ -255,30 +252,6 @@ impl VocaSet {
         Ok(())
     }
 
-    ///Pick a random card
-    pub fn pick(&self, session: &VocaSession, filtertags: Option<&Vec<&str>>) -> &VocaCard {
-        let sum: f64 = self.cards.iter().map(|card| {
-            if card.filter(filtertags) {
-                session.score(card.id.as_str())
-            } else {
-                0.0
-            }
-        }).sum();
-        let choice: f64 = rand::random::<f64>() * sum;
-        let mut score: f64 = 0.0; //cummulative score
-        let mut choiceindex: usize = 0;
-        for (i, card) in self.cards.iter().enumerate() {
-            if card.filter(filtertags) {
-                score += session.score(card.id.as_str());
-                if score >= choice {
-                    choiceindex = i;
-                    break;
-                }
-            }
-        }
-        let vocacard = &self.cards[choiceindex];
-        vocacard
-    }
 
     pub fn contains(&self, id: &str) -> bool {
         for card in self.cards.iter() {
@@ -334,7 +307,9 @@ impl VocaSession {
                 ("multiquiz.back", "translation,transcription"),
                 ("openquiz.front", "word,example"),
                 ("openquiz.back", "translation,transcription"),
-            ].iter().map(|(x,y)| (x.to_string(),y.to_string())).collect()
+            ].iter().map(|(x,y)| (x.to_string(),y.to_string())).collect(),
+            correct_option: 0,
+            options: vec!(),
         };
         session.load_data()?;
         session.populate_decks();
@@ -442,6 +417,35 @@ impl VocaSession {
             }
         } else {
             Err(SimpleError::new("No deck selected"))
+        }
+    }
+
+    ///Pick a random card
+    pub fn pick(&self, ) -> Option<&VocaCard> {
+        let filtertags: Vec<&str> = self.get_str("filter").unwrap_or("").split(",").collect();
+        if let Some(set) = self.set.as_ref() {
+            let sum: f64 = set.cards.iter().map(|card| {
+                if card.filter(&filtertags) {
+                    self.score(card.id.as_str())
+                } else {
+                    0.0
+                }
+            }).sum();
+            let choice: f64 = rand::random::<f64>() * sum;
+            let mut score: f64 = 0.0; //cummulative score
+            let mut choiceindex: usize = 0;
+            for (i, card) in set.cards.iter().enumerate() {
+                if card.filter(&filtertags) {
+                    score += self.score(card.id.as_str());
+                    if score >= choice {
+                        choiceindex = i;
+                        break;
+                    }
+                }
+            }
+            Some(&set.cards[choiceindex])
+        } else {
+            None
         }
     }
 
@@ -582,6 +586,18 @@ impl VocaSession {
         Ok(())
     }
 
+    ///Retrusn the current card
+    pub fn current_card(&self) -> Option<&VocaCard> {
+        if let (Some(deck_index), Some(card_index)) = (self.deck_index, self.card_index) {
+            if let Some(deck) = self.decks.get(deck_index) {
+                if let Some(card_id) = deck.get(card_index) {
+                    return self.set.as_ref().unwrap().get(card_id);
+                }
+            }
+        }
+        None
+    }
+
 
     pub fn set(&mut self, setting: String) {
         self.settings.insert(setting);
@@ -629,9 +645,27 @@ impl VocaSession {
         None
     }
 
-    pub fn pick_options(&self) {
+    pub fn pick_options(&mut self) {
         let optioncount = self.settings_int.get("optioncount").unwrap_or(&5);
+        self.options = Vec::new();
+        let mut rng = rand::thread_rng();
+        self.correct_option = rng.gen_range(0, *optioncount);
         for i in 0..*optioncount {
+            if i == self.correct_option {
+                let card = self.current_card().expect("Current card");
+                let card_id = card.id.clone();
+                self.options.push(card_id);
+            } else {
+                loop {
+                    if let Some(option) = self.pick() {
+                        if !self.options.contains(&option.id) {
+                            let card_id = option.id.clone();
+                            self.options.push(card_id);
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
     }

@@ -28,11 +28,12 @@ trait SessionInterface {
     fn prompt(&self, present_card: bool) -> Option<String>;
     fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str, present_card: &mut bool) -> bool;
     fn show_card(&self, side: &str);
+    fn show_options(&self);
 }
 
 impl SessionInterface for VocaSession {
     fn show_card(&self, side: &str) {
-        let colour = self.settings.contains("col");
+        let colour = !self.settings.contains("monochrome");
 
         if let Some(card) = self.card() {
             let configuration = self.get_str(format!("{}.{}", self.mode, side).as_str()).unwrap_or(match (self.mode.to_string().as_str(),side) {
@@ -62,6 +63,13 @@ impl SessionInterface for VocaSession {
                             println!("{}", card.transcriptions.join(" | "));
                         }
                     },
+                    "translations" | "translation" => {
+                        if colour  {
+                            println!(" {}", Colour::Blue.paint(card.translations.join(" | ")));
+                        } else {
+                            println!(" {}", card.transcriptions.join(" | "));
+                        }
+                    },
                     "example" | "examples" => {
                         if colour  {
                             println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
@@ -80,7 +88,7 @@ impl SessionInterface for VocaSession {
                         }
                     },
                     "options" => {
-                        self.pick_options();
+                        self.show_options();
                     },
                     _ => {
                         eprintln!("(One of the configured fields is unknown and can't be handled: {}", field);
@@ -91,9 +99,63 @@ impl SessionInterface for VocaSession {
         }
     }
 
+    fn show_options(&self) {
+        let colour = !self.settings.contains("monochrome");
+        let configuration = self.get_str(format!("{}.options", self.mode).as_str()).unwrap_or("translation");
+        let configuration: Vec<&str> = configuration.split(" ").collect();
+        for (i, option_id) in self.options.iter().enumerate() {
+            if let Some(card) = self.set.as_ref().unwrap().get(option_id) {
+                if colour {
+                    print!(" {}", Colour::Red.bold().paint(format!("{})", i+1)));
+                } else {
+                    print!(" {})",i+1);
+                }
+                for field in configuration.iter() {
+                    match *field {
+                        "word" | "words" => {
+                            if colour {
+                                print!(" {}", Colour::Green.paint(card.words.join(" | ")));
+                            } else {
+                                print!(" {}", card.words.join(" | "));
+                            }
+                        },
+                        "phon" | "transcription" | "transcriptions" => {
+                            if colour  {
+                                print!(" {}", Colour::Cyan.paint(card.transcriptions.join(" | ")));
+                            } else {
+                                print!(" {}", card.transcriptions.join(" | "));
+                            }
+                        },
+                        "translations" | "translation" => {
+                            if colour  {
+                                print!(" {}", Colour::Blue.paint(card.translations.join(" | ")));
+                            } else {
+                                print!(" {}", card.transcriptions.join(" | "));
+                            }
+                        },
+                        "example" | "examples" => {
+                            if colour  {
+                                print!(" {}", Colour::Yellow.paint(card.examples.join(" |")));
+                            } else {
+                                print!(" {}", card.examples.join(" | "));
+                            }
+                        },
+                        "comment" | "comments" => {
+                            print!("{}", card.comments.join(" | "));
+                        },
+                        _ => {
+                            eprintln!("(One of the configured option fields is unknown and can't be handled: {}", field);
+                        }
+                    }
+                }
+                println!("");
+            }
+        }
+    }
+
     fn prompt(&self, present_card: bool) -> Option<String> {
         if present_card {
-            let colour = self.settings.contains("col");
+            let colour = !self.settings.contains("monochrome");
             if colour {
                 print!("{}: {}  ", Colour::White.bold().paint("Session"), Colour::White.bold().paint(PathBuf::from(self.filename.as_str()).file_name().unwrap().to_str().unwrap()));
                 print!("{}: {}  ", Colour::White.bold().paint("Dataset"), Colour::White.bold().paint(PathBuf::from(self.set_filename.as_str()).file_name().unwrap().to_str().unwrap()));
@@ -105,7 +167,7 @@ impl SessionInterface for VocaSession {
             if colour {
                 print!("{}: {}", Colour::Blue.bold().paint("Mode"), Colour::Purple.bold().paint(self.mode.as_str()));
             } else {
-                print!("Mode: {}", self.mode);
+                print!("Mode: {}", self.mode.as_str());
             }
             if let Some(deck_index) = self.deck_index {
                 if colour {
@@ -134,7 +196,7 @@ impl SessionInterface for VocaSession {
         let mut handled = match self.mode {
             _ => false,
         };
-        let colour = self.settings.contains("col");
+        let colour = !self.settings.contains("monochrome");
         let response: Vec<&str> = response.split(" ").collect();
         if !response.is_empty() {
             *present_card = false;
@@ -297,7 +359,7 @@ impl SessionInterface for VocaSession {
                     *present_card = true;
                     true
                 },
-                "flip" | "translation" | "translations" | "t"  => {
+                "translation" | "translations" | "t"  => {
                     if let Some(card) = self.card() {
                         println!("{}", card.translations.join("\n"));
                     }
@@ -374,11 +436,12 @@ impl SessionInterface for VocaSession {
                     println!("promote | +                            -- Promote the current card to the next deck");
                     println!("show | s                               -- Show the current card again");
                     println!("shuffle | x                            -- Shuffle the deck (randomizing the card order)");
-                    println!("set [setting]                          -- Enable a setting");
-                    println!("     set showphon                      -- Show phonetic transcriptions when displaying a card");
-                    println!("     set showexample                   -- Show examples when displaying a card");
-                    println!("     set showcomment                   -- Show comments when displaying a card");
-                    println!("     set col                           -- Use colour display");
+                    println!("set [setting] [[value]]                -- Enable a setting, optionally with a value");
+                    println!("     set [mode].front [fields]         -- Set the fields to show on the front of the card in the specified mode");
+                    println!("                                          valid fields are:");
+                    println!("                                          word,example,transcription,comment,tag,options");
+                    println!("     set [mode].back [fields]          -- Set the fields to show on the back of the card in the specified mode");
+                    println!("     set monochrome                    -- Disable colour display");
                     println!("settings                               -- Outputs all setting");
                     println!("tags                                   -- Show tags");
                     println!("translation | t                        -- Show translation");
@@ -388,6 +451,13 @@ impl SessionInterface for VocaSession {
                 }
                 _ => false,
             };
+        }
+
+        let front_configuration = self.get_str(format!("{}.front", self.mode).as_str()).expect("configuration not found");
+        let back_configuration = self.get_str(format!("{}.back", self.mode).as_str()).expect("configuration not found");
+        let compute_options: bool = *present_card && (front_configuration.contains("options") || back_configuration.contains("options"));
+        if compute_options  {
+            self.pick_options();
         }
         handled
     }
