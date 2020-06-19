@@ -12,7 +12,7 @@ extern crate chrono;
 use std::iter::Iterator;
 use std::io::{BufRead,Write};
 use std::path::{Path,PathBuf};
-use std::process::exit;
+use std::process::{exit,Command};
 use std::fs;
 use clap::{App, Arg, SubCommand};
 use regex::Regex;
@@ -451,9 +451,25 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                             eprintln!("Unable to start session: {}", err);
                         }
                     }
+                } else {
+                    eprintln!("Specify a dataset to use");
                 }
             },
+            "addsource" => {
+                if let Some(url) = response.get(1) {
+                    Command::new("git")
+                        .arg("-C")
+                        .arg(sessiondir)
+                        .arg("clone")
+                        .arg(format!("\"{}\"", url.replace("\"",""))) //prevent shell injection attacks
+                        .output()
+                        .expect("failed to add source");
+                } else {
+                    eprintln!("Specify a URL");
+                }
+            }
             "help" => {
+                println!("addsource [git-url]                    -- Add a new source for vocabulary sets");
                 println!("quit                                   -- Save session & quit");
                 println!("resume [session]                       -- Load and resume an existing session");
                 println!("sets                                   -- List all sets");

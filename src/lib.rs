@@ -684,11 +684,7 @@ pub fn getsessionindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
         datapath = PathBuf::from(datapath).join("vocage").join("sessions");
     }
     if datapath.exists() {
-        for file in datapath.read_dir().expect("Unable to read dir") {
-            if let Ok(file) = file {
-                index.push(file.file_name().into_string().unwrap());
-            }
-        }
+        fileindex(datapath, "".to_string(), &mut index);
     }
     index
 }
@@ -704,12 +700,21 @@ pub fn getdataindex(configpath_opt: Option<PathBuf>) -> Vec<String> {
         datapath = PathBuf::from(datapath).join("vocage").join("data");
     }
     if datapath.exists() {
-        for file in datapath.read_dir().expect("Unable to read dir") {
-            if let Ok(file) = file {
-                index.push(file.file_name().into_string().unwrap());
+        fileindex(datapath, "".to_string(), &mut index);
+    }
+    index
+}
+
+pub fn fileindex(dir: PathBuf, prefix: String, index: &mut Vec<String>) {
+    for file in dir.read_dir().expect("Unable to read directory") {
+        if let Ok(file) = file {
+            let filename = file.file_name().into_string().unwrap();
+            if file.path().is_dir() {
+                fileindex(file.path(), format!("{}{}", prefix, filename), index);
+            } else {
+                index.push(filename);
             }
         }
     }
-    index
 }
 
