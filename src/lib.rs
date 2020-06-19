@@ -295,8 +295,8 @@ impl VocaSession {
             deck_index: None,
             card_index: None,
             set: None,
-            mode: String::new(),
-            settings: [ "col".to_string() ].iter().cloned().collect(),
+            mode: "flashcards".to_string(),
+            settings: HashSet::new(),
             settings_int: [
                 ("optioncount", 5)
             ].iter().map(|(x,y)| (x.to_string(),*y)).collect(),

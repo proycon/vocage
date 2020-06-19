@@ -45,7 +45,7 @@ impl SessionInterface for VocaSession {
                 (_,_) =>  "words"
             });
 
-            let configuration: Vec<&str> = configuration.split(" ").collect();
+            let configuration: Vec<&str> = configuration.split(",").collect();
 
             for field in configuration.into_iter() {
                 match field {
@@ -197,267 +197,319 @@ impl SessionInterface for VocaSession {
             _ => false,
         };
         let colour = !self.settings.contains("monochrome");
-        let response: Vec<&str> = response.split(" ").collect();
-        if !response.is_empty() {
-            *present_card = false;
-            handled = match response[0] {
-                "show" | "s" => {
-                    *present_card = true;
-                    true
-                },
-                "flip" | "f" => {
-                    self.show_card("back");
-                    true
-                },
-                "settings" => {
-                    for setting in self.settings.iter() {
-                        println!("{}", setting);
-                    }
-                    for (setting, value) in self.settings_int.iter() {
-                        println!("{}={}", setting, value);
-                    }
-                    for (setting, value) in self.settings_str.iter() {
-                        println!("{}=\"{}\"", setting, value);
-                    }
-                    true
-                }
-                "get" => {
-                    if let Some(key) = response.get(1) {
-                        if self.settings.contains(*key) {
-                            println!("enabled");
-                        } else if let Some(value) = self.settings_int.get(*key) {
-                            println!("{}", value);
-                        } else if let Some(value) = self.settings_str.get(*key) {
-                            println!("{}", value);
-                        } else {
-                            println!("disabled");
-                        }
-                    } else {
-                        eprintln!("Specify a setting to get");
-                    }
-                    true
-                },
-                "set" => {
-                    if let Some(key) = response.get(1) {
-                        if let Some(value) = response.get(2) {
-                            if value.chars().all(|c| c.is_numeric()) {
-                                if let Ok(value) = value.parse::<usize>() {
-                                    self.set_int(key.to_string(), value);
-                                }
+        let mut response: Vec<&str> = response.split(" ").collect();
+        *present_card = false;
+        //first round of response handling, in this round, a new command may be issues that
+        //will be picked up by the next (main) respone handling.
+        let mut newcommand = if response.is_empty() {
+            "flip"
+        } else {
+            match response[0] {
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                let mut newcommand = "";
+                if self.options.is_empty() {
+                    eprintln!("No multiple-choice question was asked")
+                } else {
+                    if let Ok(choice) = response[0].parse::<usize>() {
+                        if choice == self.correct_option + 1 {
+                            if colour {
+                                println!("{}", Colour::Green.bold().paint("Correct!"));
                             } else {
-                                eprintln!("Value should be numeric");
+                                println!("Correct!");
                             }
-                        } else {
-                            self.set(key.to_string());
-                        }
-                    } else {
-                        eprintln!("No setting specified")
-                    }
-                    *present_card = true;
-                    true
-                },
-                "unset" => {
-                    if let Some(key) = response.get(1) {
-                        self.unset(key);
-                    } else {
-                        eprintln!("No setting specified")
-                    }
-                    *present_card = true;
-                    true
-                },
-                "toggle" => {
-                    if let Some(key) = response.get(1) {
-                        if self.toggle(key.to_string()) {
-                            eprintln!("enabled")
-                        } else {
-                            eprintln!("disabled")
-                        }
-                    } else {
-                        eprintln!("No setting specified")
-                    }
-                    *present_card = true;
-                    true
-                },
-                "deck" | "d" => {
-                    if let Some(deck_value) = response.get(1) {
-                        if deck_value.chars().all(|c| c.is_numeric()) {
-                            if let Ok(deck_index) = deck_value.parse::<usize>() {
-                               self.select_deck(deck_index);
+                            if self.settings.contains("autopromote") {
+                                newcommand = "promote";
                             }
+                            self.options.clear();
                         } else {
-                           self.select_deck_by_name(deck_value);
+                            if colour {
+                                println!("{}", Colour::Red.bold().paint("Incorrect!"));
+                            } else {
+                                println!("Incorrect!");
+                            }
+                            if self.settings.contains("autodemote") {
+                                newcommand = "demote";
+                                self.options.clear();
+                            }
                         }
-                    } else {
-                        eprintln!("Provide a deck name or number")
                     }
-                    *present_card = true;
-                    true
-                },
-                "nodeck" => {
-                    self.unselect_deck();
-                    true
-                },
-                "nextdeck" | "nd"  => {
-                    self.next_deck().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
                 }
-                "prevdeck" | "pd" => {
-                    self.previous_deck().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
-                }
-                "decks" => {
-                    for (i, deck_name) in self.deck_names.iter().enumerate() {
-                        println!("#{}: {}\t\t[{} card(s)]", i+1, deck_name, self.decks[i].len());
-                    }
-                    true
+                newcommand
                 },
-                "card" | "c" => {
-                    if let Some(card_value) = response.get(1) {
-                        if card_value.chars().all(|c| c.is_numeric()) {
-                            if let Ok(card_index) = card_value.parse::<usize>() {
-                               self.select_card(card_index);
+                "answer" | "a" | "!" => {
+                    "" //TODO: handle open answers
+                },
+                _ => ""
+            }
+        };
+        if !newcommand.is_empty() {
+            response = newcommand.split(" ").collect();
+        }
+        //main response handling
+        handled = match response[0] {
+            "noop" => {
+                true
+            }
+            "show" | "s" => {
+                *present_card = true;
+                true
+            },
+            "flip" | "f" | " " | "\n" => {
+                self.show_card("back");
+                true
+            },
+            "settings" => {
+                for setting in self.settings.iter() {
+                    println!("{}", setting);
+                }
+                for (setting, value) in self.settings_int.iter() {
+                    println!("{}={}", setting, value);
+                }
+                for (setting, value) in self.settings_str.iter() {
+                    println!("{}=\"{}\"", setting, value);
+                }
+                true
+            }
+            "get" => {
+                if let Some(key) = response.get(1) {
+                    if self.settings.contains(*key) {
+                        println!("enabled");
+                    } else if let Some(value) = self.settings_int.get(*key) {
+                        println!("{}", value);
+                    } else if let Some(value) = self.settings_str.get(*key) {
+                        println!("{}", value);
+                    } else {
+                        println!("disabled");
+                    }
+                } else {
+                    eprintln!("Specify a setting to get");
+                }
+                true
+            },
+            "set" => {
+                if let Some(key) = response.get(1) {
+                    if let Some(value) = response.get(2) {
+                        if value.chars().all(|c| c.is_numeric()) {
+                            if let Ok(value) = value.parse::<usize>() {
+                                self.set_int(key.to_string(), value);
                             }
                         } else {
-                            eprintln!("Provide a card index");
+                            eprintln!("Value should be numeric");
+                        }
+                    } else {
+                        self.set(key.to_string());
+                    }
+                } else {
+                    eprintln!("No setting specified")
+                }
+                *present_card = true;
+                true
+            },
+            "unset" => {
+                if let Some(key) = response.get(1) {
+                    self.unset(key);
+                } else {
+                    eprintln!("No setting specified")
+                }
+                *present_card = true;
+                true
+            },
+            "toggle" => {
+                if let Some(key) = response.get(1) {
+                    if self.toggle(key.to_string()) {
+                        eprintln!("enabled")
+                    } else {
+                        eprintln!("disabled")
+                    }
+                } else {
+                    eprintln!("No setting specified")
+                }
+                *present_card = true;
+                true
+            },
+            "deck" | "d" => {
+                if let Some(deck_value) = response.get(1) {
+                    if deck_value.chars().all(|c| c.is_numeric()) {
+                        if let Ok(deck_index) = deck_value.parse::<usize>() {
+                           self.select_deck(deck_index);
+                        }
+                    } else {
+                       self.select_deck_by_name(deck_value);
+                    }
+                } else {
+                    eprintln!("Provide a deck name or number")
+                }
+                *present_card = true;
+                true
+            },
+            "nodeck" => {
+                self.unselect_deck();
+                true
+            },
+            "nextdeck" | "nd" | "l"  => {
+                self.next_deck().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            }
+            "prevdeck" | "pd" | "h"  => {
+                self.previous_deck().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            }
+            "decks" => {
+                for (i, deck_name) in self.deck_names.iter().enumerate() {
+                    println!("#{}: {}\t\t[{} card(s)]", i+1, deck_name, self.decks[i].len());
+                }
+                true
+            },
+            "card" | "c" => {
+                if let Some(card_value) = response.get(1) {
+                    if card_value.chars().all(|c| c.is_numeric()) {
+                        if let Ok(card_index) = card_value.parse::<usize>() {
+                           self.select_card(card_index);
                         }
                     } else {
                         eprintln!("Provide a card index");
                     }
-                    *present_card = true;
-                    true
-                },
-                "cards" | "ls" => {
-                    for (i, card) in self.iter().enumerate() {
-                        println!("#{}: {}", i+1, card);
-                    }
-                    true
-                },
-                "promote" | "correct" | "+" => {
-                    self.promote().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
-                },
-                "demote" | "incorrect" | "-" => {
-                    self.demote().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
-                },
-                "next" | "n"  => {
-                    self.next_card().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
-                },
-                "previous" | "prev" | "p"  => {
-                    self.previous_card().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
+                } else {
+                    eprintln!("Provide a card index");
                 }
-                "shuffle" | "x"  => {
-                    self.shuffle().map_err(|e| eprintln!("{}",e) );
-                    *present_card = true;
-                    true
-                },
-                "translation" | "translations" | "t"  => {
-                    if let Some(card) = self.card() {
+                *present_card = true;
+                true
+            },
+            "cards" | "ls" => {
+                for (i, card) in self.iter().enumerate() {
+                    println!("#{}: {}", i+1, card);
+                }
+                true
+            },
+            "promote" | ">" | "L" => {
+                self.promote().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            },
+            "demote" |  "<" | "H" => {
+                self.demote().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            },
+            "next" | "n" | "j"  => {
+                self.next_card().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            },
+            "previous" | "prev" | "p" | "k"  => {
+                self.previous_card().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            }
+            "shuffle" | "X"  => {
+                self.shuffle().map_err(|e| eprintln!("{}",e) );
+                *present_card = true;
+                true
+            },
+            "translation" | "translations" | "t"  => {
+                if let Some(card) = self.card() {
+                    if colour {
+                        println!("{}", Colour::Blue.paint(card.translations.join("\n")));
+                    } else {
                         println!("{}", card.translations.join("\n"));
                     }
-                    true
-                },
-                "phon" | "transcription" | "transcriptions" | "ph"  => {
-                    if let Some(card) = self.card() {
-                        if colour {
-                            println!("{}", Colour::Cyan.paint(card.transcriptions.join("\n")));
-                        } else {
-                            println!("{}", card.transcriptions.join("\n"));
-                        }
-                    }
-                    true
-                },
-                "examples" | "example" | "ex"  => {
-                    if let Some(card) = self.card() {
-                        if colour {
-                            println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
-                        } else {
-                            println!("{}", card.examples.join("\n"));
-                        }
-                    }
-                    true
-                },
-                "tags"  => {
-                    if let Some(card) = self.card() {
-                        if colour {
-                            println!("{}", Colour::Purple.paint(card.tags.join("\n")));
-                        } else {
-                            println!("{}", card.tags.join("\n"));
-                        }
-                    }
-                    true
-                },
-                "comments" | "comment"  => {
-                    if let Some(card) = self.card() {
-                        println!("{}", card.comments.join("\n"));
-                    }
-                    true
-                },
-                "mode" => {
-                    *present_card = true;
-                    if let Some(mode) = response.get(1) {
-                        if self.settings_str.contains_key(format!("{}.front", mode).as_str()) && self.settings_str.contains_key(format!("{}.back", mode).as_str()) {
-                            self.mode = mode.to_string();
-                        } else {
-                            eprintln!("Invalid mode (you must have {}.front and {}.back defined for this mode to work)", mode, mode)
-                        }
-                    } else {
-                        eprintln!("No mode specified")
-                    }
-                    true
-                },
-                "help" => {
-                    println!("card | c [index]                       -- Switch to the card by number");
-                    println!("cards                                  -- Show a list of all cards in the deck (or all cards that exist if no deck is selected)");
-                    println!("deck | d [name|index]                  -- Switch to the deck by name or number");
-                    println!("demote | -                             -- Demote the current card to the previous deck");
-                    println!("example | ex                           -- Show examples");
-                    println!("comments                               -- Show comments");
-                    println!("flip | f                               -- Show the back of the current card (i.e. the translation/solution)");
-                    println!("get [setting]                          -- Get a setting");
-                    println!("mode [mode]                            -- Switch to the specified mode");
-                    println!("  mode flashcards                      -- Switch to flashcards mode");
-                    println!("  mode openquiz                        -- Switch to open quiz mode");
-                    println!("  mode multiquiz                       -- Switch to multiple-choice quiz mode");
-                    println!("next | n                               -- Present the next card");
-                    println!("nextdeck | nd                          -- Switch to the next deck");
-                    println!("nodeck                                 -- Deselect a deck");
-                    println!("phon | ph                              -- Show phonetic transcription");
-                    println!("previous | p                           -- Present the previous card");
-                    println!("prevdeck | pd                          -- Switch to the previous deck");
-                    println!("promote | +                            -- Promote the current card to the next deck");
-                    println!("show | s                               -- Show the current card again");
-                    println!("shuffle | x                            -- Shuffle the deck (randomizing the card order)");
-                    println!("set [setting] [[value]]                -- Enable a setting, optionally with a value");
-                    println!("     set [mode].front [fields]         -- Set the fields to show on the front of the card in the specified mode");
-                    println!("                                          valid fields are:");
-                    println!("                                          word,example,transcription,comment,tag,options");
-                    println!("     set [mode].back [fields]          -- Set the fields to show on the back of the card in the specified mode");
-                    println!("     set monochrome                    -- Disable colour display");
-                    println!("settings                               -- Outputs all setting");
-                    println!("tags                                   -- Show tags");
-                    println!("translation | t                        -- Show translation");
-                    println!("unset [setting]                        -- Disable a setting");
-                    println!("----");
-                    false //we condider this unhandled so the handling falls back and also output the general commands later on
                 }
-                _ => false,
-            };
-        }
+                true
+            },
+            "phon" | "transcription" | "transcriptions" | "ph" | "P"  => {
+                if let Some(card) = self.card() {
+                    if colour {
+                        println!("{}", Colour::Cyan.paint(card.transcriptions.join("\n")));
+                    } else {
+                        println!("{}", card.transcriptions.join("\n"));
+                    }
+                }
+                true
+            },
+            "examples" | "example" | "ex" | "x" => {
+                if let Some(card) = self.card() {
+                    if colour {
+                        println!("{}", Colour::Yellow.paint(card.examples.join("\n")));
+                    } else {
+                        println!("{}", card.examples.join("\n"));
+                    }
+                }
+                true
+            },
+            "tags"  => {
+                if let Some(card) = self.card() {
+                    if colour {
+                        println!("{}", Colour::Purple.paint(card.tags.join("\n")));
+                    } else {
+                        println!("{}", card.tags.join("\n"));
+                    }
+                }
+                true
+            },
+            "comments" | "comment"  => {
+                if let Some(card) = self.card() {
+                    println!("{}", card.comments.join("\n"));
+                }
+                true
+            },
+            "mode" => {
+                *present_card = true;
+                if let Some(mode) = response.get(1) {
+                    if self.settings_str.contains_key(format!("{}.front", mode).as_str()) && self.settings_str.contains_key(format!("{}.back", mode).as_str()) {
+                        self.mode = mode.to_string();
+                    } else {
+                        eprintln!("Invalid mode (you must have {}.front and {}.back defined for this mode to work)", mode, mode)
+                    }
+                } else {
+                    eprintln!("No mode specified")
+                }
+                true
+            },
+            "help" => {
+                println!("card | c [index]                       -- Switch to the card by number");
+                println!("cards                                  -- Show a list of all cards in the deck (or all cards that exist if no deck is selected)");
+                println!("deck | d [name|index]                  -- Switch to the deck by name or number");
+                println!("demote | < | H                         -- Demote the current card to the previous deck");
+                println!("example | x                            -- Show examples");
+                println!("comments                               -- Show comments");
+                println!("flip | f | <enter>                     -- Show the back of the current card (i.e. the translation/solution)");
+                println!("get [setting]                          -- Get a setting");
+                println!("mode [mode]                            -- Switch to the specified mode");
+                println!("  mode flashcards                      -- Switch to flashcards mode");
+                println!("  mode openquiz                        -- Switch to open quiz mode");
+                println!("  mode multiquiz                       -- Switch to multiple-choice quiz mode");
+                println!("next | n | j                           -- Present the next card");
+                println!("nextdeck | nd | h                      -- Switch to the next deck");
+                println!("nodeck                                 -- Deselect a deck");
+                println!("phon | ph | P                          -- Show phonetic transcription");
+                println!("previous | p | k                       -- Present the previous card");
+                println!("prevdeck | pd  | l                     -- Switch to the previous deck");
+                println!("promote | > | L                        -- Promote the current card to the next deck");
+                println!("show | s                               -- Show the current card again");
+                println!("shuffle | X                            -- Shuffle the deck (randomizing the card order)");
+                println!("set [setting] [[value]]                -- Enable a setting, optionally with a value");
+                println!("     set [mode].front [fields]         -- Set the fields to show on the front of the card in the specified mode");
+                println!("                                          valid fields are:");
+                println!("                                          word,example,transcription,comment,tag,options");
+                println!("     set [mode].back [fields]          -- Set the fields to show on the back of the card in the specified mode");
+                println!("     set monochrome                    -- Disable colour display");
+                println!("settings                               -- Outputs all setting");
+                println!("tags                                   -- Show tags");
+                println!("translation | t                        -- Show translation");
+                println!("unset [setting]                        -- Disable a setting");
+                println!("----");
+                false //we condider this unhandled so the handling falls back and also output the general commands later on
+            }
+            _ => false,
+        };
 
-        let front_configuration = self.get_str(format!("{}.front", self.mode).as_str()).expect("configuration not found");
-        let back_configuration = self.get_str(format!("{}.back", self.mode).as_str()).expect("configuration not found");
-        let compute_options: bool = *present_card && (front_configuration.contains("options") || back_configuration.contains("options"));
-        if compute_options  {
-            self.pick_options();
+        if let (Some(front_configuration), Some(back_configuration)) = (self.get_str(format!("{}.front", self.mode).as_str()), self.get_str(format!("{}.back", self.mode).as_str()) ) {
+            let compute_options: bool = *present_card && (front_configuration.contains("options") || back_configuration.contains("options"));
+            if compute_options  {
+                self.pick_options();
+            }
         }
         handled
     }
