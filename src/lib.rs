@@ -636,7 +636,7 @@ impl VocaSession {
 
     pub fn next_deck(&mut self) -> Result<(), SimpleError> {
         if let Some(deck_index) = self.deck_index.as_mut() {
-            if *deck_index < self.decks.len() {
+            if *deck_index < self.decks.len() - 1 {
                 *deck_index += 1;
             } else {
                 bail!("No further decks left");
@@ -675,7 +675,7 @@ impl VocaSession {
     pub fn next_card(&mut self) -> Result<(), SimpleError> {
         if let Some(deck_index) = self.deck_index {
             if let Some(card_index) = self.card_index.as_mut() {
-                if *card_index < self.decks[deck_index].len() {
+                if *card_index < self.decks[deck_index].len() - 1 {
                     *card_index += 1;
                 } else {
                     self.next_deck()?;  //will recurse back into this function if needed
