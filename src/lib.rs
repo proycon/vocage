@@ -489,9 +489,11 @@ impl VocaSession {
         incorrect as f64 / correct as f64
     }
 
-    pub fn visit(&mut self, item_id: &str) {
+    pub fn visit(&mut self) {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs();
-        self.lastvisit.insert(item_id.to_owned(),now);
+        if let Some(card) = self.current_card() {
+            self.lastvisit.insert(card.id.to_string(),now);
+        }
     }
 
     pub fn shuffle(&mut self) -> Result<(),SimpleError> {
@@ -524,6 +526,23 @@ impl VocaSession {
 
     pub fn unselect_deck(&mut self) {
         self.deck_index = None;
+    }
+
+    pub fn is_due(self, id: &str) -> bool {
+        if let Some(deck_index) = self.deck_index {
+            if let Some(deck_name) = self.deck_names.get(deck_index) {
+                let interval: u64 = *self.get_int(format!("{}.interval", deck_name).as_str()).unwrap_or(&0) as u64;
+                if interval == 0 {
+                    return true;
+                } else {
+                    if let Some(lastvisit) = self.lastvisit.get(id) {
+                        let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs();
+                        return now - lastvisit > interval * 3600;
+                    }
+                }
+            }
+        }
+        false
     }
 
     pub fn select_card(&mut self, card_index: usize) -> Result<(),SimpleError> {
@@ -601,10 +620,10 @@ impl VocaSession {
     ///Promote the card at in the specified deck and card index to the next deck
     ///This corresponds to a correct answer
     pub fn promote(&mut self) -> Result<(), SimpleError> {
+        self.visit();
         if let (Some(deck_index), Some(card_index)) = (self.deck_index, self.card_index) {
             if let Some(deck) = self.decks.get_mut(deck_index) {
                 let card_id = deck.remove(card_index);
-                self.visit(card_id.as_str());
                 *self.correct.entry(card_id.clone()).or_insert(0) += 1;
                 if let Some(nextdeck) = self.decks.get_mut(deck_index + 1) {
                     nextdeck.push(card_id);
@@ -618,10 +637,10 @@ impl VocaSession {
     ///Demote the card at in the specified deck and card index to the previous deck
     ///This corresponds to an incorrect answer
     pub fn demote(&mut self) -> Result<(), SimpleError> {
+        self.visit();
         if let (Some(deck_index), Some(card_index)) = (self.deck_index, self.card_index) {
             if let Some(deck) = self.decks.get_mut(deck_index) {
                 let card_id = deck.remove(card_index);
-                self.visit(card_id.as_str());
                 *self.incorrect.entry(card_id.clone()).or_insert(0) += 1;
                 if deck_index > 0 {
                     if let Some(prevdeck) = self.decks.get_mut(deck_index - 1) {
@@ -673,6 +692,7 @@ impl VocaSession {
     }
 
     pub fn next_card(&mut self) -> Result<(), SimpleError> {
+        self.visit();
         if let Some(deck_index) = self.deck_index {
             if let Some(card_index) = self.card_index.as_mut() {
                 if *card_index < self.decks[deck_index].len() - 1 {
@@ -695,6 +715,7 @@ impl VocaSession {
     }
 
     pub fn previous_card(&mut self) -> Result<(), SimpleError> {
+        self.visit();
         if let Some(deck_index) = self.deck_index {
             if let Some(card_index) = self.card_index.as_mut() {
                 if *card_index > 0 {

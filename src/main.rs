@@ -28,6 +28,7 @@ trait SessionInterface {
     fn prompt(&self, present_card: bool) -> Option<String>;
     fn handle_response(&mut self, response: String, datadir: &str, sessiondir: &str, present_card: &mut bool) -> bool;
     fn show_card(&self, side: &str);
+    fn show_card_in_list(&self, card: &VocaCard);
     fn show_options(&self);
 }
 
@@ -99,10 +100,62 @@ impl SessionInterface for VocaSession {
         }
     }
 
+    fn show_card_in_list(&self, card: &VocaCard) {
+        let colour = !self.settings.contains("monochrome");
+        let configuration = self.get_str(format!("{}.list", self.mode).as_str()).unwrap_or("word,phon");
+        let configuration: Vec<&str> = configuration.split(",").collect();
+        for field in configuration.into_iter() {
+            match field {
+                "word" | "words" => {
+                    if colour {
+                        print!("{}", Colour::Green.bold().paint(card.words.join(" | ")));
+                    } else {
+                        print!("{}", card.words.join(" | "));
+                    }
+                },
+                "phon" | "transcription" | "transcriptions" => {
+                    if colour  {
+                        print!("- {}", Colour::Cyan.paint(card.transcriptions.join(" | ")));
+                    } else {
+                        print!("- {}", card.transcriptions.join(" | "));
+                    }
+                },
+                "translations" | "translation" => {
+                    if colour  {
+                        print!(" - {}", Colour::Blue.paint(card.translations.join(" | ")));
+                    } else {
+                        print!(" - {}", card.transcriptions.join(" | "));
+                    }
+                },
+                "example" | "examples" => {
+                    if colour  {
+                        print!(" - {}", Colour::Yellow.paint(card.examples.join("|")));
+                    } else {
+                        print!(" - {}", card.examples.join("\n"));
+                    }
+                },
+                "comment" | "comments" => {
+                    print!("{}", card.comments.join("\n"));
+                },
+                "tags" => {
+                    if colour  {
+                        print!(" - tags: {}", Colour::Purple.paint(card.comments.join(", ")));
+                    } else {
+                        print!(" - tags: {}", card.comments.join(", "));
+                    }
+                },
+                _ => {
+                    eprintln!("(One of the configured fields is unknown and can't be handled: {}", field);
+                }
+            }
+        }
+        println!();
+    }
+
     fn show_options(&self) {
         let colour = !self.settings.contains("monochrome");
         let configuration = self.get_str(format!("{}.options", self.mode).as_str()).unwrap_or("translation");
-        let configuration: Vec<&str> = configuration.split(" ").collect();
+        let configuration: Vec<&str> = configuration.split(",").collect();
         for (i, option_id) in self.options.iter().enumerate() {
             if let Some(card) = self.set.as_ref().unwrap().get(option_id) {
                 if colour {
@@ -218,6 +271,7 @@ impl SessionInterface for VocaSession {
             match response[0] {
                 "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
                 let mut newcommand = "";
+                self.visit();
                 if self.options.is_empty() {
                     eprintln!("No multiple-choice question was asked")
                 } else {
@@ -248,6 +302,7 @@ impl SessionInterface for VocaSession {
                 newcommand
                 },
                 "answer" | "a" | "!" => {
+                    self.visit();
                     "" //TODO: handle open answers
                 },
                 _ => ""
@@ -266,6 +321,7 @@ impl SessionInterface for VocaSession {
                 true
             },
             "flip" | "f" | " " | "\n" => {
+                self.visit();
                 self.show_card("back");
                 true
             },
@@ -390,7 +446,8 @@ impl SessionInterface for VocaSession {
             },
             "cards" | "ls" => {
                 for (i, card) in self.iter().enumerate() {
-                    println!("#{}: {}", i+1, card);
+                    print!("#{}: ", i+1);
+                    self.show_card_in_list(card);
                 }
                 true
             },
@@ -505,6 +562,7 @@ impl SessionInterface for VocaSession {
                 println!("                                          valid fields are:");
                 println!("                                          word,example,transcription,comment,tag,options");
                 println!("     set [mode].back [fields]          -- Set the fields to show on the back of the card in the specified mode");
+                println!("     set [mode].list [fields]          -- Set the fields to show in the list view");
                 println!("     set [deck_name].interval          -- Set the interval time in hours for the specified deck, determines when cards are due again");
                 println!("     set monochrome                    -- Disable colour display");
                 println!("     set filter [tags]                 -- Filter by tags");
