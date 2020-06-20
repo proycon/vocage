@@ -102,7 +102,7 @@ impl SessionInterface for VocaSession {
 
     fn show_card_in_list(&self, card: &VocaCard) {
         let colour = !self.settings.contains("monochrome");
-        let configuration = self.get_str(format!("{}.list", self.mode).as_str()).unwrap_or("word,phon");
+        let configuration = self.get_str(format!("{}.list", self.mode).as_str()).unwrap_or("word,phon,time");
         let configuration: Vec<&str> = configuration.split(",").collect();
         for field in configuration.into_iter() {
             match field {
@@ -144,6 +144,28 @@ impl SessionInterface for VocaSession {
                         print!(" - tags: {}", card.comments.join(", "));
                     }
                 },
+                "time" => {
+                    if let Some(time) = self.lastvisit.get(card.id.as_str()) {
+                        let time = NaiveDateTime::from_timestamp(*time as i64, 0);
+                        let dt: DateTime<Utc> = DateTime::from_utc(time, Utc);
+                        let dt: String = dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                        if self.is_due(card.id.as_str()) {
+                            if colour  {
+                                print!(" - {} (due)", Colour::Yellow.paint(dt));
+                            } else {
+                                print!(" - {} (due)", dt);
+                            }
+                        } else  {
+                            if colour  {
+                                print!(" - {} (done)", Colour::Green.paint(dt));
+                            } else {
+                                print!(" - {} (done)", dt);
+                            }
+                        }
+                    } else {
+                        print!(" - (new)");
+                    }
+                }
                 _ => {
                     eprintln!("(One of the configured fields is unknown and can't be handled: {}", field);
                 }
@@ -445,7 +467,7 @@ impl SessionInterface for VocaSession {
                 true
             },
             "cards" | "ls" => {
-                for (i, card) in self.iter().enumerate() {
+                for (i, card) in self.iter_cards(self.deck_index, self.get_filter(), true).enumerate() {
                     print!("#{}: ", i+1);
                     self.show_card_in_list(card);
                 }
@@ -462,7 +484,7 @@ impl SessionInterface for VocaSession {
                 true
             },
             "next" | "n" | "j"  => {
-                self.next_card().map_err(|e| eprintln!("{}",e) );
+                self.next_card(true).map_err(|e| eprintln!("{}",e) );
                 *present_card = true;
                 true
             },
@@ -564,12 +586,14 @@ impl SessionInterface for VocaSession {
                 println!("     set [mode].back [fields]          -- Set the fields to show on the back of the card in the specified mode");
                 println!("     set [mode].list [fields]          -- Set the fields to show in the list view");
                 println!("     set [deck_name].interval          -- Set the interval time in hours for the specified deck, determines when cards are due again");
+                println!("     set showall                       -- Show all cards, not only cards that are due");
                 println!("     set monochrome                    -- Disable colour display");
                 println!("     set filter [tags]                 -- Filter by tags");
                 println!("settings                               -- Outputs all setting");
                 println!("tags                                   -- Show tags");
                 println!("translation | t                        -- Show translation");
                 println!("unset [setting]                        -- Disable a setting");
+                println!("    unset showall                      -- Show only cards that are due, not all cards");
                 println!("----");
                 false //we condider this unhandled so the handling falls back and also output the general commands later on
             }
@@ -625,11 +649,9 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                     match session.save() {
                         Ok(()) => {
                             eprintln!("Session saved: {}", session.filename.as_str());
-                            exit(0)
                         }
                         Err(err) => {
                             eprintln!("{}",err);
-                            exit(1)
                         }
                     }
                 }

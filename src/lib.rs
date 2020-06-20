@@ -239,13 +239,15 @@ pub struct CardIterator<'a> {
     pub card_index: usize, //the selected card
     pub multideck: bool,
     pub filter: Filter,
+    ///Show all cards, not only the ones that are due
+    pub show_all: bool,
 }
 
 impl<'a> Iterator for CardIterator<'a> {
     type Item = &'a VocaCard;
 
     fn next(&mut self) -> Option<Self::Item>  {
-        if self.card_index + 1< self.session.decks[self.deck_index].len()  {
+        if self.card_index + 1 < self.session.decks[self.deck_index].len()  {
             let card_id = self.session.decks[self.deck_index][self.card_index].as_str();
             self.card_index += 1;
             let card = if let Some(set) = self.session.set.as_ref() {
@@ -255,7 +257,11 @@ impl<'a> Iterator for CardIterator<'a> {
             };
             if let Some(card) = card {
                 if self.filter.matches(card) {
-                    Some(card)
+                    if self.show_all || self.session.is_due(card.id.as_str()) {
+                        Some(card)
+                    } else {
+                        self.next() //recurse
+                    }
                 } else {
                     self.next() //recurse
                 }
@@ -528,7 +534,7 @@ impl VocaSession {
         self.deck_index = None;
     }
 
-    pub fn is_due(self, id: &str) -> bool {
+    pub fn is_due(&self, id: &str) -> bool {
         if let Some(deck_index) = self.deck_index {
             if let Some(deck_name) = self.deck_names.get(deck_index) {
                 let interval: u64 = *self.get_int(format!("{}.interval", deck_name).as_str()).unwrap_or(&0) as u64;
@@ -587,15 +593,20 @@ impl VocaSession {
         }
     }
 
-    ///Iterate over all cards in the currently selected deck
     pub fn iter(&self) -> CardIterator {
-        if let Some(deck_index) = self.deck_index {
+        self.iter_cards(self.deck_index, self.get_filter(), self.settings.contains("showall"))
+    }
+
+    ///Iterate over all cards in the currently selected deck
+    pub fn iter_cards(&self, deck_index: Option<usize>, filter: Filter, showall: bool) -> CardIterator {
+        if let Some(deck_index) = deck_index {
             CardIterator {
                 session: self,
                 deck_index: deck_index,
                 card_index: 0,
                 multideck: false,
-                filter: self.get_filter(),
+                filter: filter,
+                show_all: showall
             }
         } else {
             CardIterator {
@@ -603,7 +614,8 @@ impl VocaSession {
                 deck_index: 0,
                 card_index: 0,
                 multideck: true,
-                filter: self.get_filter(),
+                filter: filter,
+                show_all: showall
             }
         }
     }
@@ -657,6 +669,8 @@ impl VocaSession {
         if let Some(deck_index) = self.deck_index.as_mut() {
             if *deck_index < self.decks.len() - 1 {
                 *deck_index += 1;
+                self.card_index = None;
+                self.next_card(false)?;
             } else {
                 bail!("No further decks left");
             }
@@ -664,7 +678,7 @@ impl VocaSession {
             if !self.decks.is_empty() {
                 self.deck_index = Some(0);
                 self.card_index = None;
-                self.next_card()?;
+                self.next_card(false)?;
             } else {
                 bail!("There are no decks at all");
             }
@@ -676,6 +690,8 @@ impl VocaSession {
         if let Some(deck_index) = self.deck_index.as_mut() {
             if *deck_index > 0 {
                 *deck_index -= 1;
+                self.card_index = None;
+                self.next_card(false)?;
             } else {
                 bail!("You are at the first deck");
             }
@@ -683,7 +699,7 @@ impl VocaSession {
             if !self.decks.is_empty() {
                 self.deck_index = Some(0);
                 self.card_index = None;
-                self.next_card()?;
+                self.next_card(false)?;
             } else {
                 bail!("There are no decks at all");
             }
@@ -691,27 +707,33 @@ impl VocaSession {
         Ok(())
     }
 
-    pub fn next_card(&mut self) -> Result<(), SimpleError> {
+    pub fn next_card(&mut self, allow_next_deck: bool) -> Result<(), SimpleError> {
         self.visit();
+        let mut nextdeck = false;
         if let Some(deck_index) = self.deck_index {
             if let Some(card_index) = self.card_index.as_mut() {
-                if *card_index < self.decks[deck_index].len() - 1 {
+                if *card_index + 1 < self.decks[deck_index].len() {
                     *card_index += 1;
                 } else {
-                    self.next_deck()?;  //will recurse back into this function if needed
+                    nextdeck = true;
                 }
             } else {
                 if self.decks[deck_index].is_empty() {
                     eprintln!("Deck #{} is empty", deck_index + 1);
-                    self.next_deck()?;  //will recurse back into this function if needed
+                    nextdeck = true;
                 } else {
                     self.card_index = Some(0)
                 }
             }
         } else {
-            self.next_deck()?;  //will recurse back into this function if needed
+            nextdeck = true;  //will recurse back into this function if needed
         }
-        Ok(())
+        if nextdeck && allow_next_deck {
+            self.card_index = None;
+            self.next_deck()  //will recurse back into this function if needed
+        } else {
+            Ok(())
+        }
     }
 
     pub fn previous_card(&mut self) -> Result<(), SimpleError> {
