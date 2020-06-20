@@ -335,9 +335,12 @@ impl SessionInterface for VocaSession {
         }
         //main response handling
         handled = match response[0] {
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                true
+            },
             "noop" => {
                 true
-            }
+            },
             "show" | "s" => {
                 *present_card = true;
                 true
@@ -467,7 +470,7 @@ impl SessionInterface for VocaSession {
                 true
             },
             "cards" | "ls" => {
-                for (i, card) in self.iter_cards(self.deck_index, self.get_filter(), true).enumerate() {
+                for (i, card) in self.iter_cards(self.deck_index, 0, self.get_filter(), true).enumerate() {
                     print!("#{}: ", i+1);
                     self.show_card_in_list(card);
                 }
@@ -645,7 +648,7 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                 exit(0);
             },
             "save" => {
-                if let Some(session) = session {
+                if let Some(session) = session.as_ref() {
                     match session.save() {
                         Ok(()) => {
                             eprintln!("Session saved: {}", session.filename.as_str());
@@ -677,7 +680,8 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                         getsessionfile(filename, PathBuf::from(sessiondir)).to_string_lossy().to_string()
                     };
                     match VocaSession::from_file(filename.as_str()) {
-                         Ok(loaded_session) => {
+                         Ok(mut loaded_session) => {
+                            loaded_session.pick_options(); //prepare for multichoice mode
                             session = Some(loaded_session);
                          },
                          Err(err)  => {
@@ -756,7 +760,7 @@ fn handle_response(response: String, mut session: Option<VocaSession>, datadir: 
                 eprintln!("Invalid command");
             }
         };
-    }
+    };
     session
 }
 

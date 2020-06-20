@@ -279,6 +279,52 @@ impl<'a> Iterator for CardIterator<'a> {
     }
 }
 
+pub struct CardReverseIterator<'a> {
+    pub session: &'a VocaSession,
+    pub deck_index: usize, //the selected deck
+    pub card_index: usize, //the selected card
+    pub multideck: bool,
+    pub filter: Filter,
+    ///Show all cards, not only the ones that are due
+    pub show_all: bool,
+}
+
+impl<'a> Iterator for CardReverseIterator<'a> {
+    type Item = &'a VocaCard;
+
+    fn next(&mut self) -> Option<Self::Item>  {
+        if self.card_index > 0 {
+            let card_id = self.session.decks[self.deck_index][self.card_index].as_str();
+            self.card_index -= 1;
+            let card = if let Some(set) = self.session.set.as_ref() {
+                set.get(card_id)
+            } else {
+                None
+            };
+            if let Some(card) = card {
+                if self.filter.matches(card) {
+                    if self.show_all || self.session.is_due(card.id.as_str()) {
+                        Some(card)
+                    } else {
+                        self.next() //recurse
+                    }
+                } else {
+                    self.next() //recurse
+                }
+            } else {
+                None
+            }
+        } else {
+            if self.multideck && self.deck_index > 0 {
+                self.deck_index -= 1;
+                self.next() //recurse
+            } else {
+                None
+            }
+        }
+    }
+}
+
 impl VocaSet {
     /// Parse the vocabulary data file (JSON or YAML) into the VocaSet structure
     pub fn from_file(filename: &str) -> Result<VocaSet, Box<dyn Error>> {
@@ -594,22 +640,45 @@ impl VocaSession {
     }
 
     pub fn iter(&self) -> CardIterator {
-        self.iter_cards(self.deck_index, self.get_filter(), self.settings.contains("showall"))
+        self.iter_cards(self.deck_index, self.card_index.unwrap_or(0), self.get_filter(), self.settings.contains("showall"))
     }
 
     ///Iterate over all cards in the currently selected deck
-    pub fn iter_cards(&self, deck_index: Option<usize>, filter: Filter, showall: bool) -> CardIterator {
+    pub fn iter_cards(&self, deck_index: Option<usize>, card_index: usize, filter: Filter, showall: bool) -> CardIterator {
         if let Some(deck_index) = deck_index {
             CardIterator {
                 session: self,
                 deck_index: deck_index,
-                card_index: 0,
+                card_index: card_index,
                 multideck: false,
                 filter: filter,
                 show_all: showall
             }
         } else {
             CardIterator {
+                session: self,
+                deck_index: 0,
+                card_index: 0,
+                multideck: true,
+                filter: filter,
+                show_all: showall
+            }
+        }
+    }
+
+    ///Iterate over all cards in the currently selected deck
+    pub fn rev_iter_cards(&self, deck_index: Option<usize>, card_index: usize, filter: Filter, showall: bool) -> CardReverseIterator {
+        if let Some(deck_index) = deck_index {
+            CardReverseIterator {
+                session: self,
+                deck_index: deck_index,
+                card_index: card_index,
+                multideck: false,
+                filter: filter,
+                show_all: showall
+            }
+        } else {
+            CardReverseIterator {
                 session: self,
                 deck_index: 0,
                 card_index: 0,
@@ -709,53 +778,23 @@ impl VocaSession {
 
     pub fn next_card(&mut self, allow_next_deck: bool) -> Result<(), SimpleError> {
         self.visit();
-        let mut nextdeck = false;
-        if let Some(deck_index) = self.deck_index {
-            if let Some(card_index) = self.card_index.as_mut() {
-                if *card_index + 1 < self.decks[deck_index].len() {
-                    *card_index += 1;
-                } else {
-                    nextdeck = true;
-                }
-            } else {
-                if self.decks[deck_index].is_empty() {
-                    eprintln!("Deck #{} is empty", deck_index + 1);
-                    nextdeck = true;
-                } else {
-                    self.card_index = Some(0)
-                }
-            }
-        } else {
-            nextdeck = true;  //will recurse back into this function if needed
-        }
-        if nextdeck && allow_next_deck {
-            self.card_index = None;
-            self.next_deck()  //will recurse back into this function if needed
-        } else {
-            Ok(())
-        }
+        let mut iter = self.iter_cards(self.deck_index, self.card_index.unwrap_or(0), self.get_filter(), self.settings.contains("showall"));
+        iter.next();
+        let deck_index = iter.deck_index.clone();
+        let card_index = iter.card_index.clone();
+        self.deck_index = Some(deck_index);
+        self.card_index = Some(card_index);
+        Ok(())
     }
 
     pub fn previous_card(&mut self) -> Result<(), SimpleError> {
         self.visit();
-        if let Some(deck_index) = self.deck_index {
-            if let Some(card_index) = self.card_index.as_mut() {
-                if *card_index > 0 {
-                    *card_index -= 1;
-                } else {
-                    self.previous_deck()?;  //will recurse back into this function if needed
-                }
-            } else {
-                if self.decks[deck_index].is_empty() {
-                    eprintln!("Deck #{} is empty", deck_index + 1);
-                    self.previous_deck()?;  //will recurse back into this function if needed
-                } else {
-                    self.card_index = Some(self.decks[deck_index].len())
-                }
-            }
-        } else {
-            self.previous_deck()?;  //will recurse back into this function if needed
-        }
+        let mut iter = self.rev_iter_cards(self.deck_index, self.card_index.unwrap_or(0), self.get_filter(), self.settings.contains("showall"));
+        iter.next();
+        let deck_index = iter.deck_index.clone();
+        let card_index = iter.card_index.clone();
+        self.deck_index = Some(deck_index);
+        self.card_index = Some(card_index);
         Ok(())
     }
 
