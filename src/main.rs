@@ -176,7 +176,18 @@ impl SessionInterface for VocaSession {
                     print!("  Deck: #{}/{} {}", deck_index+1, self.decks.len(), self.deck_names.get(deck_index).expect("getting name for deck") );
                 }
                 if let Some(card_index) = self.card_index {
-                    print!("  Card: #{}/{}", card_index+1, self.decks[deck_index].len() );
+                    let filter = self.get_str("filter").unwrap_or("");
+                    if !filter.is_empty() {
+                        let filtered_count = self.iter().count();
+                        print!("  Card: #{}/{} ({})", card_index+1, self.decks[deck_index].len(), filtered_count );
+                        if colour {
+                            print!("  {}: {}", Colour::Purple.paint("Filter"),Colour::Purple.paint(filter));
+                        } else {
+                            print!("  Filter: {}", filter);
+                        }
+                    } else {
+                        print!("  Card: #{}/{}", card_index+1, self.decks[deck_index].len() );
+                    }
                     println!("");
                     self.show_card("front");
                 } else {
@@ -294,7 +305,7 @@ impl SessionInterface for VocaSession {
                                 self.set_int(key.to_string(), value);
                             }
                         } else {
-                            eprintln!("Value should be numeric");
+                            self.set_str(key.to_string(), value.to_string());
                         }
                     } else {
                         self.set(key.to_string());
@@ -494,7 +505,9 @@ impl SessionInterface for VocaSession {
                 println!("                                          valid fields are:");
                 println!("                                          word,example,transcription,comment,tag,options");
                 println!("     set [mode].back [fields]          -- Set the fields to show on the back of the card in the specified mode");
+                println!("     set [deck_name].interval          -- Set the interval time in hours for the specified deck, determines when cards are due again");
                 println!("     set monochrome                    -- Disable colour display");
+                println!("     set filter [tags]                 -- Filter by tags");
                 println!("settings                               -- Outputs all setting");
                 println!("tags                                   -- Show tags");
                 println!("translation | t                        -- Show translation");

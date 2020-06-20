@@ -88,6 +88,120 @@ pub struct VocaSession {
     pub set: Option<VocaSet>,
 }
 
+#[derive(Serialize, Deserialize,Debug,Clone,Copy)]
+pub enum FieldType {
+    Word,
+    Example,
+    Phon, //transcription
+    Translation,
+    Comment,
+    Tag
+}
+
+#[derive(Serialize, Deserialize,Debug,Clone)]
+pub enum Filter {
+    None,
+    Any(Vec<Filter>),
+    All(Vec<Filter>),
+    Not(Box<Filter>),
+    Equals(FieldType,String),
+}
+
+impl Filter {
+    fn matches(&self, card: &VocaCard) -> bool {
+        match self {
+            Filter::None => true,
+            Filter::Any(v) => {
+                v.iter().any(|f| f.matches(card))
+            },
+            Filter::All(v) => {
+                v.iter().all(|f| f.matches(card))
+            },
+            Filter::Not(f) => {
+                !f.matches(card)
+            },
+            Filter::Equals(field,value) => {
+                match field {
+                    FieldType::Word => {
+                        card.words.contains(&value)
+                    },
+                    FieldType::Phon => {
+                        card.transcriptions.contains(&value)
+                    },
+                    FieldType::Example => {
+                        card.examples.contains(&value)
+                    },
+                    FieldType::Comment => {
+                        card.comments.contains(&value)
+                    },
+                    FieldType::Translation => {
+                        card.translations.contains(&value)
+                    },
+                    FieldType::Tag => {
+                        card.tags.contains(&value)
+                    }
+                }
+            },
+        }
+    }
+
+    fn parse(query: &str) -> Result<Filter,SimpleError> {
+        if query.is_empty() {
+            Ok(Filter::None)
+        } else {
+            if query.starts_with("any(") && query.ends_with(")") {
+                let subqueries: Vec<&str> = query[5..query.len()-1].split(",").collect();
+                let mut filters: Vec<Filter> = Vec::new();
+                for subquery in subqueries.iter() {
+                    match Filter::parse(subquery)  {
+                        Ok(filter) => filters.push(filter),
+                        Err(err) => return Err(err),
+                    }
+                }
+                Ok(Filter::Any(filters))
+            } else if query.starts_with("all(") && query.ends_with(")") {
+                let subqueries: Vec<&str> = query[5..query.len()-1].split(",").collect();
+                let mut filters: Vec<Filter> = Vec::new();
+                for subquery in subqueries.iter() {
+                    match Filter::parse(subquery)  {
+                        Ok(filter) => filters.push(filter),
+                        Err(err) => return Err(err),
+                    }
+                }
+                Ok(Filter::All(filters))
+            } else if query.starts_with("not(") && query.ends_with(")") {
+                let subquery: &str = &query[5..query.len()-1];
+                match Filter::parse(subquery) {
+                    Ok(filter) => return Ok(Filter::Not(Box::new(filter))),
+                    Err(err) => return Err(err),
+                }
+            } else if query.starts_with("word=") {
+                let value: &str = &query[5..query.len()];
+                Ok(Filter::Equals(FieldType::Word, value.to_owned()))
+            } else if query.starts_with("phon=") {
+                let value: &str = &query[5..query.len()];
+                Ok(Filter::Equals(FieldType::Phon, value.to_owned()))
+            } else if query.starts_with("example=") {
+                let value: &str = &query[8..query.len()];
+                Ok(Filter::Equals(FieldType::Example, value.to_owned()))
+            } else if query.starts_with("comment=") {
+                let value: &str = &query[8..query.len()];
+                Ok(Filter::Equals(FieldType::Comment, value.to_owned()))
+            } else if query.starts_with("translation=") {
+                let value: &str = &query[12..query.len()];
+                Ok(Filter::Equals(FieldType::Translation, value.to_owned()))
+            } else if query.starts_with("tag=") {
+                let value: &str = &query[4..query.len()];
+                Ok(Filter::Equals(FieldType::Tag, value.to_owned()))
+            } else if query.starts_with("#") { //alias for tags
+                let value: &str = &query[1..query.len()];
+                Ok(Filter::Equals(FieldType::Tag, value.to_owned()))
+            } else {
+                Err(SimpleError::new(format!("Unable to parse filter query at: \"{}\"", query)))
+            }
+        }
+    }
+}
 
 
 ///we implement the Display trait so we can print VocaCards
@@ -102,15 +216,6 @@ impl VocaCard {
         let id_string: String = format!("{}|{}|{}", self.words.join(" / "), self.transcriptions.join(" / "), self.translations.join(" / "));
         let id = md5::compute(id_string.as_bytes());
         self.id = format!("{:x}",id);
-    }
-
-    pub fn filter(&self, filtertags: &Vec<&str>) -> bool {
-        if filtertags.is_empty() {
-            true
-        } else {
-           //do the actual matching
-           self.tags.iter().any(|tag| filtertags.contains(&tag.as_str()))
-        }
     }
 
     ///Prints a vocaitem
@@ -133,6 +238,7 @@ pub struct CardIterator<'a> {
     pub deck_index: usize, //the selected deck
     pub card_index: usize, //the selected card
     pub multideck: bool,
+    pub filter: Filter,
 }
 
 impl<'a> Iterator for CardIterator<'a> {
@@ -147,7 +253,15 @@ impl<'a> Iterator for CardIterator<'a> {
             } else {
                 None
             };
-            card
+            if let Some(card) = card {
+                if self.filter.matches(card) {
+                    Some(card)
+                } else {
+                    self.next() //recurse
+                }
+            } else {
+                None
+            }
         } else {
             if self.multideck && self.deck_index + 1 < self.session.decks.len() {
                 self.deck_index += 1;
@@ -215,9 +329,9 @@ impl VocaSet {
     }
 
     /// Show the contents of the Vocabulary Set; prints to to standard output
-    pub fn show(&self, withtranslation: bool, withtranscription: bool, filtertags: &Vec<&str>, withtags: bool, withexample: bool, withcomment: bool) {
+    pub fn show(&self, withtranslation: bool, withtranscription: bool, filter: &Filter, withtags: bool, withexample: bool, withcomment: bool) {
         for card in self.cards.iter() {
-            if card.filter(filtertags) {
+            if filter.matches(card) {
                 print!("{}", card);
                 if withtranscription { print!("\t{}", card.transcriptions.join(" | ")) }
                 if withtranslation { print!("\t{}", card.translations.join(" | ")) }
@@ -238,13 +352,13 @@ impl VocaSet {
     }
 
     ///Output all data as CSV
-    pub fn csv(&self, filtertags: &Vec<&str>) -> Result<(), Box<dyn Error>> {
+    pub fn csv(&self, filter: &Filter) -> Result<(), Box<dyn Error>> {
         let mut wtr = csv::WriterBuilder::new()
             .flexible(true)
             .has_headers(false)
             .from_writer(io::stdout());
         for card in self.cards.iter() {
-            if card.filter(filtertags) {
+            if filter.matches(card) {
                 wtr.serialize(card)?;
             }
         };
@@ -298,7 +412,12 @@ impl VocaSession {
             mode: "flashcards".to_string(),
             settings: HashSet::new(),
             settings_int: [
-                ("optioncount", 5)
+                ("optioncount", 5),
+                ("new.interval", 0),
+                ("short.interval", 1),
+                ("medium.interval", 24),
+                ("long.interval", 168),
+                ("done.interval", 5040),
             ].iter().map(|(x,y)| (x.to_string(),*y)).collect(),
             settings_str: [
                 ("flashcards.front", "word,example"),
@@ -421,11 +540,11 @@ impl VocaSession {
     }
 
     ///Pick a random card
-    pub fn pick(&self, ) -> Option<&VocaCard> {
-        let filtertags: Vec<&str> = self.get_str("filter").unwrap_or("").split(",").collect();
+    pub fn pick(&self) -> Option<&VocaCard> {
+        let filter = self.get_filter();
         if let Some(set) = self.set.as_ref() {
             let sum: f64 = set.cards.iter().map(|card| {
-                if card.filter(&filtertags) {
+                if filter.matches(card) {
                     self.score(card.id.as_str())
                 } else {
                     0.0
@@ -435,7 +554,7 @@ impl VocaSession {
             let mut score: f64 = 0.0; //cummulative score
             let mut choiceindex: usize = 0;
             for (i, card) in set.cards.iter().enumerate() {
-                if card.filter(&filtertags) {
+                if filter.matches(card) {
                     score += self.score(card.id.as_str());
                     if score >= choice {
                         choiceindex = i;
@@ -457,6 +576,7 @@ impl VocaSession {
                 deck_index: deck_index,
                 card_index: 0,
                 multideck: false,
+                filter: self.get_filter(),
             }
         } else {
             CardIterator {
@@ -464,8 +584,18 @@ impl VocaSession {
                 deck_index: 0,
                 card_index: 0,
                 multideck: true,
+                filter: self.get_filter(),
             }
         }
+    }
+
+    pub fn get_filter(&self) -> Filter {
+        let mut filter = Filter::parse(self.get_str("filter").unwrap_or(""));
+        if let Err(err) = filter {
+            eprintln!("Disabling filter due to parse error: {}",err);
+            filter = Ok(Filter::None)
+        }
+        filter.unwrap()
     }
 
     ///Promote the card at in the specified deck and card index to the next deck
@@ -605,6 +735,8 @@ impl VocaSession {
 
     pub fn unset(&mut self, setting: &str) {
         self.settings.remove(setting);
+        self.settings_int.remove(setting);
+        self.settings_str.remove(setting);
     }
 
     pub fn set_int(&mut self, setting: String, value: usize) {
@@ -637,6 +769,12 @@ impl VocaSession {
         if let Some(deck_index) = self.deck_index {
             if let Some(card_index) = self.card_index {
                 if let Some(set) = self.set.as_ref() {
+                    if deck_index >= self.decks.len() {
+                        return None;
+                    }
+                    if card_index >= self.decks[deck_index].len() {
+                        return None;
+                    }
                     let card_id = &self.decks[deck_index][card_index];
                     return set.get( card_id.as_str() );
                 }
