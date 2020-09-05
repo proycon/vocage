@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.1"
+rand = "0.7.3"
+chrono = "0.4.15"
+ansi_term = "0.12.1"
