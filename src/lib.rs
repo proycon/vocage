@@ -1,15 +1,16 @@
 extern crate rand;
 extern crate chrono;
 extern crate ansi_term;
+//extern crate clap;
 
 use std::fs::File;
 use std::io::{Write,Read,BufReader,BufRead,Error,ErrorKind};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::collections::{HashMap,HashSet};
 use std::fmt;
 use rand::prelude::{thread_rng,Rng};
 use chrono::NaiveDateTime;
 use ansi_term::Colour;
+//use clap::Arg;
 
 pub struct VocaSession {
     columns: Vec<String>,
@@ -22,6 +23,7 @@ pub struct VocaSession {
     showcolumns: Vec<Vec<u8>>,
     ///list delimiter
     listdelimiter: Option<String>,
+    header: bool,
 }
 
 pub struct VocaData {
@@ -51,9 +53,10 @@ impl VocaData {
         let mut intervals: Vec<u32> = Vec::new();
         let mut showcolumns: Vec<Vec<u8>> = Vec::new();
         let mut listdelimiter: Option<String> = None;
+        let mut header: bool = false;
         let mut columncount: u8 = 0;
         let mut returntofirst = false;
-        for line in reader.lines() {
+        for (i, line) in reader.lines().enumerate() {
             let line = line?;
             if line.starts_with('#') {
                 //metadata or comment
@@ -77,11 +80,16 @@ impl VocaData {
                 }
             } else if !line.is_empty() {
                 let card = VocaCard::parse_line(&line)?;
-                let length = card.fields.len() as u8;
-                if length > columncount {
-                   columncount = length;
+                if i == 0 && !line.contains("deck#") && !line.contains("due@") && line == line.to_uppercase() {
+                    columns = card.fields;
+                    header = true
+                } else {
+                    let length = card.fields.len() as u8;
+                    if length > columncount {
+                       columncount = length;
+                    }
+                    cards.push(card);
                 }
-                cards.push(card);
             }
         }
         if showcolumns.is_empty() {
@@ -98,7 +106,8 @@ impl VocaData {
                 returntofirst: returntofirst,
                 filename: filename.to_owned(),
                 showcolumns: showcolumns,
-                listdelimiter: listdelimiter
+                listdelimiter: listdelimiter,
+                header: header
             }
         })
     }
@@ -141,7 +150,17 @@ impl VocaData {
 
     pub fn write(&self) -> Result<(),std::io::Error> {
         let mut file = std::fs::File::create(self.session.filename.as_str())?;
-        //metadata first
+        //contents
+        if self.session.header {
+            file.write(self.session.columns.join("\t").as_bytes() )?;
+            file.write(b"\n")?;
+        }
+        for card in self.cards.iter() {
+            file.write(card.write_to_string().as_bytes())?;
+            file.write(b"\n")?;
+        }
+        //metadata last
+        file.write(b"#METADATA:\n")?; //end of metadata
         if !self.session.decks.is_empty() {
             file.write(b"#decks: ")?;
             file.write(self.session.decks.join(",").as_bytes() )?;
@@ -161,20 +180,16 @@ impl VocaData {
             file.write(b"#returntofirst\n")?;
         }
         if !self.session.columns.is_empty() {
-            file.write(b"#columns: ")?;
-            file.write(self.session.columns.join(",").as_bytes() )?;
-            file.write(b"\n")?;
+            if !self.session.header {
+                file.write(b"#columns: ")?;
+                file.write(self.session.columns.join(",").as_bytes() )?;
+                file.write(b"\n")?;
+            }
             for showcolumns in self.session.showcolumns.iter() {
                 file.write(b"#showcolumns: ")?;
                 file.write(showcolumns.iter().map(|n| format!("{}", self.session.columns[*n as usize]).to_string()).collect::<Vec<String>>().join(",").as_bytes() )?;
                 file.write(b"\n")?;
             }
-        }
-        file.write(b"#---\n")?; //end of metadata
-        //contents
-        for card in self.cards.iter() {
-            file.write(card.write_to_string().as_bytes())?;
-            file.write(b"\n")?;
         }
         Ok(())
     }
@@ -313,4 +328,18 @@ impl VocaCard {
         }
     }
 
+}
+
+pub fn getinputline() -> Option<String> {
+    print!(">>> ");
+    std::io::stdout().flush().unwrap();
+    let stdin = std::io::stdin();
+    if let Some(response) = stdin.lock().lines().next() { //read one line only
+        if let Ok(response) = response {
+            if response != "" {
+                return Some(response);
+            }
+        }
+    }
+    None
 }
