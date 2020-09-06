@@ -13,6 +13,7 @@ use chrono::NaiveDateTime;
 use ansi_term::Colour;
 use clap::{App,Arg};
 
+#[derive(Clone)]
 pub struct VocaSession {
     columns: Vec<String>,
     decks: Vec<String>,
@@ -28,14 +29,14 @@ pub struct VocaSession {
 }
 
 pub struct VocaData {
-    session: VocaSession,
-    cards: Vec<VocaCard>,
+    pub session: VocaSession,
+    pub cards: Vec<VocaCard>,
 }
 
 pub struct VocaCard {
-    fields: Vec<String>,
-    due: Option<NaiveDateTime>,
-    deck: u8
+    pub fields: Vec<String>,
+    pub due: Option<NaiveDateTime>,
+    pub deck: u8
 }
 
 #[derive(Debug,Copy,Clone)]
@@ -201,7 +202,7 @@ impl VocaData {
             metadata_args.push("--columns".to_owned());
             metadata_args.push((1..=columncount).map(|n| format!("column#{}",n).to_owned()).collect() );
         }
-        let mut session = VocaSession::from_arguments(metadata_args.iter().map(|s| s.as_str()).collect());
+        let mut session = VocaSession::from_arguments(metadata_args.iter().map(|s| s.as_str()).collect())?;
         session.header = header;
         session.filename = Some(filename.to_owned());
 
@@ -456,7 +457,7 @@ pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {
             std::process::exit(1);
         } else {
             match VocaData::from_file(filename) {
-                Ok(data) => {
+                Ok(mut data) => {
                     if !datasets.is_empty() {
                         if data.session.columns != datasets[0].session.columns {
                             eprintln!("ERROR: columns of {} differ from those in the first loaded file, unable to load together.", filename);
