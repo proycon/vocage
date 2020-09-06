@@ -269,7 +269,7 @@ impl VocaCard {
         self.deck = deck;
     }
 
-    pub fn correct(&mut self, session: &VocaSession) {
+    pub fn promote(&mut self, session: &VocaSession) {
         if ((self.deck+1) as usize) < session.decks.len() {
             self.move_to_deck(self.deck+1, session);
         } else {
@@ -277,7 +277,7 @@ impl VocaCard {
         }
     }
 
-    pub fn incorrect(&mut self, session: &VocaSession) {
+    pub fn demote(&mut self, session: &VocaSession) {
         if self.deck > 0 && !session.returntofirst {
             self.move_to_deck(self.deck-1, session);
         } else {
