@@ -1,7 +1,7 @@
 extern crate rand;
 extern crate chrono;
 extern crate ansi_term;
-//extern crate clap;
+extern crate clap;
 
 use std::fs::File;
 use std::io::{Write,Read,BufReader,BufRead,Error,ErrorKind};
@@ -10,7 +10,7 @@ use std::fmt;
 use rand::prelude::{thread_rng,Rng};
 use chrono::NaiveDateTime;
 use ansi_term::Colour;
-//use clap::Arg;
+use clap::{App,Arg};
 
 pub struct VocaSession {
     columns: Vec<String>,
@@ -18,7 +18,7 @@ pub struct VocaSession {
     ///interval in minutes
     intervals: Vec<u32>,
     returntofirst: bool,
-    filename: String,
+    filename: Option<String>,
     ///Configuration of columns to show for each side of the card
     showcolumns: Vec<Vec<u8>>,
     ///list delimiter
@@ -43,45 +43,138 @@ pub enum PrintFormat {
     AnsiColour
 }
 
+impl VocaSession {
+    pub fn common_arguments<'a,'b>() -> Vec<clap::Arg<'a,'b>> {
+        let mut args: Vec<Arg> = Vec::new();
+        args.push( Arg::with_name("showcolumns")
+            .long("showcolumns")
+            .short("-C")
+            .help("Specify what columns to show on the card, comma separated list of column names, specify this multiple times to define multiple 'sides' of the card. The columns themselves are defined using --columns")
+            .multiple(true)
+            .takes_value(true)
+        );
+        args.push( Arg::with_name("decks")
+            .long("decks")
+            .short("-d")
+            .help("Comma seperated list of deck names")
+            .takes_value(true)
+        );
+        args.push( Arg::with_name("intervals")
+            .long("intervals")
+            .short("-l")
+            .help("Comma seperated list of intervals for each respective deck (in minutes). Must contain as many items as --decks")
+            .takes_value(true)
+        );
+        args.push( Arg::with_name("columns")
+            .long("columns")
+            .short("-c")
+            .help("Comma separated list of column names.")
+            .takes_value(true)
+        );
+        args.push( Arg::with_name("listdelimiter")
+            .long("listdelimiter")
+            .short("-l")
+            .help("List delimiter to separate multiple alternatives within a field (recommended: | )")
+            .takes_value(true)
+        );
+        args.push( Arg::with_name("returntofirst")
+            .long("returntofirst")
+            .short("-1")
+            .help("When a card is demoted (e.g. answered incorrectly), demote it to the very first deck rather than the previous deck")
+        );
+        args
+    }
+
+    pub fn set_common_arguments<'a>(&mut self, args: &clap::ArgMatches<'a>) {
+        if let Some(decks) = args.value_of("decks") {
+            self.decks = decks.trim().split(",").map(|s| s.trim().to_owned()).collect();
+        }
+        if let Some(intervals) = args.value_of("intervals") {
+            self.intervals = intervals.trim().split(",").map(|s| s.parse::<u32>().expect("parsing interval")).collect();
+        }
+        if let Some(columns) = args.value_of("columns") {
+            self.columns = columns.trim().split(",").map(|s| s.trim().to_owned()).collect();
+        }
+        if let Some(listdelimiter) = args.value_of("listdelimiter") {
+            self.listdelimiter = Some(listdelimiter.to_string());
+        }
+        if let Some(showcolumns) = args.values_of("showcolumns") {
+            self.showcolumns.clear();
+            for showcolumns in showcolumns {
+                self.showcolumns.push(showcolumns.trim().split(",").map( |s|
+                    self.columns.iter().enumerate() .find(|&r| r.1 == s.trim() )
+                    .expect(format!("ERROR: showcolumns references a non-existing column: {}",s).as_str())
+                    .0
+                ).map(|n| n as u8 ).collect());
+            }
+        }
+        if args.is_present("returntofirst") {
+            self.returntofirst = true;
+        }
+
+        //sanity checks and defaults
+        if self.decks.len() > 0 && self.intervals.is_empty() {
+
+        } else if self.decks.len() != self.intervals.len() {
+            panic!("ERROR: intervals and decks have different length");
+        }
+
+        if self.showcolumns.is_empty() {
+            //default configuration: two sides
+            self.showcolumns.push(vec!(0)); //first column on front side
+            self.showcolumns.push((1..self.columns.len()).map(|n| n as u8).collect()); //other columns on back side
+        }
+    }
+
+    pub fn from_arguments(args: Vec<&str>) -> Self {
+        let mut vocasession = Self::default();
+        let args = App::new("metadata").args(&Self::common_arguments()).get_matches_from(args);
+        vocasession.set_common_arguments(&args);
+        vocasession
+    }
+}
+
+impl Default for VocaSession {
+    fn default() -> Self {
+        VocaSession {
+            columns: Vec::new(),
+            decks: Vec::new(),
+            intervals: Vec::new(),
+            returntofirst: false,
+            filename: None,
+            showcolumns: Vec::new(),
+            listdelimiter: None,
+            header: false
+        }
+    }
+}
+
 impl VocaData {
     pub fn from_file(filename: &str) -> Result<Self,std::io::Error> {
         let file = File::open(filename)?;
         let reader = BufReader::new(file);
         let mut cards: Vec<VocaCard> = Vec::new();
-        let mut columns: Vec<String> = Vec::new();
-        let mut decks: Vec<String> = Vec::new();
-        let mut intervals: Vec<u32> = Vec::new();
-        let mut showcolumns: Vec<Vec<u8>> = Vec::new();
-        let mut listdelimiter: Option<String> = None;
         let mut header: bool = false;
         let mut columncount: u8 = 0;
-        let mut returntofirst = false;
+        let mut metadata_args: Vec<String> = vec!();
         for (i, line) in reader.lines().enumerate() {
             let line = line?;
             if line.starts_with('#') {
                 //metadata or comment
-                if line.starts_with("#decks:") {
-                    decks = line[7..].trim().split(",").map(|s| s.trim().to_owned()).collect();
-                } else if line.starts_with("#intervals:") {
-                    intervals = line[11..].trim().split(",").map(|s| s.parse::<u32>().expect("parsing interval")).collect();
-                } else if line.starts_with("#columns:") {
-                    columns = line[9..].trim().split(",").map(|s| s.trim().to_owned()).collect();
-                } else if line.starts_with("#showcolumns:") {
-                    //may be specified multiple times for multiple 'sides' of the card
-                    showcolumns.push(line[13..].trim().split(",").map( |s|
-                        columns.iter().enumerate() .find(|&r| r.1 == s.trim() )
-                        .expect(format!("showcolumns references a non-existing column: {}",s).as_str())
-                        .0
-                    ).map(|n| n as u8 ).collect());
-                } else if line.starts_with("#listdelimiter:") {
-                    listdelimiter = Some(line[15..].trim().to_owned());
-                } else if line == "#returntofirst" {
-                    returntofirst = true;
+                if line.starts_with("#--") {
+                    //metadata
+                    if let Some((index,_)) = line.chars().enumerate().find(|&r| r.1 == ' ') {
+                        metadata_args.push(format!("--{}",&line[1..index]).to_owned());
+                        metadata_args.push(line[index+1..].to_owned());
+                    } else {
+                        metadata_args.push(format!("--{}",&line[1..]).to_owned());
+                    }
                 }
             } else if !line.is_empty() {
                 let card = VocaCard::parse_line(&line)?;
                 if i == 0 && !line.contains("deck#") && !line.contains("due@") && line == line.to_uppercase() {
-                    columns = card.fields;
+                    metadata_args.push("--columns".to_owned());
+                    metadata_args.push(card.fields.join(","));
                     header = true
                 } else {
                     let length = card.fields.len() as u8;
@@ -92,25 +185,21 @@ impl VocaData {
                 }
             }
         }
-        if showcolumns.is_empty() {
-            //default configuration: two sides
-            showcolumns.push(vec!(0)); //first column on front side
-            showcolumns.push((1..columncount).collect()); //other columns on back side
+        if !metadata_args.contains(&"--columns".to_owned()) {
+            //no column/header information provided, infer
+            metadata_args.push("--columns".to_owned());
+            metadata_args.push((1..=columncount).map(|n| format!("column#{}",n).to_owned()).collect() );
         }
+        let mut session = VocaSession::from_arguments(metadata_args.iter().map(|s| s.as_str()).collect());
+        session.header = header;
+        session.filename = Some(filename.to_owned());
+
         Ok(VocaData {
             cards: cards,
-            session: VocaSession {
-                columns: columns,
-                decks: decks,
-                intervals: intervals,
-                returntofirst: returntofirst,
-                filename: filename.to_owned(),
-                showcolumns: showcolumns,
-                listdelimiter: listdelimiter,
-                header: header
-            }
+            session: session,
         })
     }
+
 
     pub fn random_index(&self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<usize> {
         let mut indices: Vec<usize> = Vec::new();
@@ -149,7 +238,10 @@ impl VocaData {
 
 
     pub fn write(&self) -> Result<(),std::io::Error> {
-        let mut file = std::fs::File::create(self.session.filename.as_str())?;
+        if self.session.filename.is_none() {
+            return Err(std::io::Error::new(ErrorKind::InvalidData, "No filename configured"));
+        }
+        let mut file = std::fs::File::create(self.session.filename.as_ref().unwrap().as_str())?;
         //contents
         if self.session.header {
             file.write(self.session.columns.join("\t").as_bytes() )?;
@@ -160,33 +252,33 @@ impl VocaData {
             file.write(b"\n")?;
         }
         //metadata last
-        file.write(b"#METADATA:\n")?; //end of metadata
+        file.write(b"#METADATA:\n")?; //begin of metadata
         if !self.session.decks.is_empty() {
-            file.write(b"#decks: ")?;
+            file.write(b"#--decks ")?;
             file.write(self.session.decks.join(",").as_bytes() )?;
             file.write(b"\n")?;
         }
         if !self.session.intervals.is_empty() {
-            file.write(b"#intervals: ")?;
+            file.write(b"#--intervals ")?;
             file.write(self.session.intervals.iter().map(|s| format!("{}",s)).collect::<Vec<String>>().join(",").as_bytes() )?;
             file.write(b"\n")?;
         }
         if let Some(listdelimiter) = &self.session.listdelimiter {
-            file.write(b"#listdelimiter: ")?;
+            file.write(b"#--listdelimiter ")?;
             file.write(listdelimiter.as_bytes())?;
             file.write(b"\n")?;
         }
         if self.session.returntofirst {
-            file.write(b"#returntofirst\n")?;
+            file.write(b"#--returntofirst\n")?;
         }
         if !self.session.columns.is_empty() {
             if !self.session.header {
-                file.write(b"#columns: ")?;
+                file.write(b"#--columns ")?;
                 file.write(self.session.columns.join(",").as_bytes() )?;
                 file.write(b"\n")?;
             }
             for showcolumns in self.session.showcolumns.iter() {
-                file.write(b"#showcolumns: ")?;
+                file.write(b"#--showcolumns ")?;
                 file.write(showcolumns.iter().map(|n| format!("{}", self.session.columns[*n as usize]).to_string()).collect::<Vec<String>>().join(",").as_bytes() )?;
                 file.write(b"\n")?;
             }
@@ -343,3 +435,4 @@ pub fn getinputline() -> Option<String> {
     }
     None
 }
+

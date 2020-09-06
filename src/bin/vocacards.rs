@@ -12,11 +12,6 @@ fn main() {
                   .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>")
                   .about("A simple command-line flash card system implementing spaced-repetition (Leitner)")
                   //snippet hints --> addargb,addargs,addargi,addargf,addargpos
-                  .arg(Arg::with_name("showcolumns")
-                    .help("Specify what columns to show on the card, specify this multiple times to define multiple 'sides' of the card")
-                    .multiple(true)
-                    .takes_value(true)
-                   )
                   .arg(Arg::with_name("filename")
                     .help("vocabulary file (tsv)")
                     .takes_value(true)
