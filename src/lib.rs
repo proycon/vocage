@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{Write,Read,BufReader,BufRead,Error,ErrorKind};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fmt;
+use std::path::PathBuf;
 use rand::prelude::{thread_rng,Rng};
 use chrono::NaiveDateTime;
 use ansi_term::Colour;
@@ -85,7 +86,7 @@ impl VocaSession {
         args
     }
 
-    pub fn set_common_arguments<'a>(&mut self, args: &clap::ArgMatches<'a>) {
+    pub fn set_common_arguments<'a>(&mut self, args: &clap::ArgMatches<'a>) -> Result<(),Error> {
         if let Some(decks) = args.value_of("decks") {
             self.decks = decks.trim().split(",").map(|s| s.trim().to_owned()).collect();
         }
@@ -116,7 +117,7 @@ impl VocaSession {
         if self.decks.len() > 0 && self.intervals.is_empty() {
 
         } else if self.decks.len() != self.intervals.len() {
-            panic!("ERROR: intervals and decks have different length");
+            return Err(Error::new(ErrorKind::InvalidData, "ERROR: intervals and decks have different length"));
         }
 
         if self.showcolumns.is_empty() {
@@ -124,13 +125,23 @@ impl VocaSession {
             self.showcolumns.push(vec!(0)); //first column on front side
             self.showcolumns.push((1..self.columns.len()).map(|n| n as u8).collect()); //other columns on back side
         }
+        Ok(())
     }
 
-    pub fn from_arguments(args: Vec<&str>) -> Self {
+    pub fn from_arguments(args: Vec<&str>) -> Result<Self,Error> {
         let mut vocasession = Self::default();
         let args = App::new("metadata").args(&Self::common_arguments()).get_matches_from(args);
-        vocasession.set_common_arguments(&args);
-        vocasession
+        vocasession.set_common_arguments(&args)?;
+        Ok(vocasession)
+    }
+
+    pub fn get_deck_by_name(&self, name: &str) -> Option<u8> {
+        for (i, n) in self.decks.iter().enumerate() {
+            if n == name {
+                return Some(i as u8);
+            }
+        }
+        None
     }
 }
 
@@ -435,4 +446,42 @@ pub fn getinputline() -> Option<String> {
     }
     None
 }
+
+pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {
+    let mut datasets: Vec<VocaData> = Vec::new();
+
+    for filename in files.iter() {
+        if !PathBuf::from(filename).exists() {
+            eprintln!("ERROR: Specified input file not does exist: {}", filename);
+            std::process::exit(1);
+        } else {
+            match VocaData::from_file(filename) {
+                Ok(data) => {
+                    if !datasets.is_empty() {
+                        if data.session.columns != datasets[0].session.columns {
+                            eprintln!("ERROR: columns of {} differ from those in the first loaded file, unable to load together.", filename);
+                            std::process::exit(1);
+                        }
+                        if data.session.decks != datasets[0].session.decks {
+                            if force {
+                                data.session.decks = datasets[0].session.decks.clone();
+                            } else {
+                                eprintln!("ERROR: decks of {} differ from those in the first loaded file, refusing to load together (use --force to force it)", filename);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    datasets.push(data);
+                }
+                Err(err) => {
+                    eprintln!("ERROR loading {}: {}", filename, err);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
+    datasets
+}
+
 
