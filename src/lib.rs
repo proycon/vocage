@@ -63,7 +63,7 @@ impl VocaSession {
         );
         args.push( Arg::with_name("intervals")
             .long("intervals")
-            .short("-l")
+            .short("-i")
             .help("Comma seperated list of intervals for each respective deck (in minutes). Must contain as many items as --decks")
             .takes_value(true)
         );
@@ -131,6 +131,8 @@ impl VocaSession {
 
     pub fn from_arguments(args: Vec<&str>) -> Result<Self,Error> {
         let mut vocasession = Self::default();
+        let mut args = args.clone();
+        args.insert(0,"metadata");
         let args = App::new("metadata").args(&Self::common_arguments()).get_matches_from(args);
         vocasession.set_common_arguments(&args)?;
         Ok(vocasession)
@@ -302,14 +304,13 @@ impl VocaData {
 
 impl VocaCard {
     pub fn parse_line(line: &str) -> Result<VocaCard, std::io::Error> {
-        let mut prevc: char = 0 as char;
         let mut begin = 0;
         let mut fields: Vec<String> =  Vec::new();
         let mut deck: u8 = 0;
         let mut due: Option<NaiveDateTime> = None;
-        let length = line.chars().count();
-        for (i, c) in line.chars().enumerate() {
-            if (i == length -1) || ((prevc == ' ' || prevc == '\t') && (c == ' ' || c == '\t'))  {
+        let length = line.len();
+        for (i, c) in line.char_indices() {
+            if (i == length -1) || (c == '\t')  {
                 //handle previous column
                 let value = &line[begin..if i == length - 1 {
                     length
@@ -336,8 +337,8 @@ impl VocaCard {
                 }
                 begin = i
             }
-            prevc = c;
         }
+        eprintln!("DEBUG: PARSED: {:?}", &fields);
         Ok( VocaCard {
             fields: fields,
             due: due,
@@ -432,20 +433,6 @@ impl VocaCard {
         }
     }
 
-}
-
-pub fn getinputline() -> Option<String> {
-    print!(">>> ");
-    std::io::stdout().flush().unwrap();
-    let stdin = std::io::stdin();
-    if let Some(response) = stdin.lock().lines().next() { //read one line only
-        if let Ok(response) = response {
-            if response != "" {
-                return Some(response);
-            }
-        }
-    }
-    None
 }
 
 pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {

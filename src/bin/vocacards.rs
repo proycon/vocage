@@ -10,7 +10,7 @@ use termion::raw::{IntoRawMode,RawTerminal};
 use std::io::{Write, stdout, stdin, Stdout};
 use clap::{Arg, App};
 use rand::prelude::{thread_rng,Rng};
-use vocage::{VocaData,VocaCard,getinputline,load_files};
+use vocage::{VocaData,VocaSession,VocaCard,load_files,PrintFormat};
 
 
 fn main() {
@@ -61,7 +61,7 @@ fn main() {
 
     let mut side: u8 = 0;
 
-    let mut status: String = "Use: q to save & exit, space to flip, l/→ to promote, h/← to demote, j/↓ for next".to_owned();
+    let mut status: String = "Use: q to quit, w to save, space to flip, l/→ to promote, h/← to demote, j/↓ for next".to_owned();
 
     //make a copy to prevent problems with the borrow checker
     let session = datasets[0].session.clone();
@@ -70,7 +70,8 @@ fn main() {
         let setchoice = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
         if let Some(card) = datasets[setchoice].pick_card_mut(&mut rng, deck, due_only) {
             //show card
-            draw(&mut stdout, Some(card), side, status.as_str());
+            draw(&mut stdout, Some(card), &session, side, status.as_str());
+            status.clear();
 
             //process input
             for c in stdin().keys() {
@@ -83,9 +84,6 @@ fn main() {
                          break;
                      },
                      Key::Char('q') | Key::Esc => {
-                         for dataset in datasets.iter() {
-                             dataset.write().expect("failure saving file");
-                         }
                          done = true;
                          break;
                      },
@@ -112,17 +110,23 @@ fn main() {
             }
         }
     }
+    write!(stdout,"{}",termion::cursor::Show).expect("error drawing");
 }
 
 
-pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, side: u8, status: &str) {
+pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str) {
     write!(stdout, "{}{}{}{}",
            termion::clear::All,
            termion::cursor::Goto(1, 1),
            status,
-           termion::cursor::Hide);
+           termion::cursor::Hide).expect("error drawing");
 
     if let Some(card) = card {
+        let card_output = card.print_to_string(side, &session, PrintFormat::AnsiColour, true).expect("printing card failed");
+        write!(stdout,"{}{}{}",
+           termion::cursor::Goto(1, 5),
+           card_output,
+           termion::cursor::Hide).expect("error drawing");
     }
 
     stdout.flush().unwrap();
