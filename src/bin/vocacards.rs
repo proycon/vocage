@@ -7,6 +7,7 @@ extern crate vocage;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode,RawTerminal};
+use termion::color;
 use std::io::{Write, stdout, stdin, Stdout};
 use clap::{Arg, App};
 use rand::prelude::{thread_rng,Rng};
@@ -119,6 +120,8 @@ fn main() {
 
 
 pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str) {
+    //let (width, height) = termion::terminal_size().expect("terminal size");
+
     write!(stdout, "{}{}{}{}",
            termion::clear::All,
            termion::cursor::Goto(1, 1),
@@ -126,11 +129,22 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
            termion::cursor::Hide).expect("error drawing");
 
     if let Some(card) = card {
-        let card_output = card.print_to_string(side, &session, PrintFormat::AnsiColour, true).expect("printing card failed (no such side?)");
-        for (i, line) in card_output.split("\n").enumerate() {
-            write!(stdout,"{}{}{}",
+        let lines = card.fields_to_str(side, &session, true).expect("printing card failed (no such side?)");
+        for (i, (column, line)) in lines.into_iter().enumerate() {
+            let c: color::Fg<&dyn color::Color> =
+                   match column {
+                        0 => color::Fg(&color::Green),
+                        1 => color::Fg(&color::Cyan),
+                        2 => color::Fg(&color::Yellow),
+                        3 => color::Fg(&color::Magenta),
+                        4 => color::Fg(&color::Blue),
+                        _ => color::Fg(&color::Reset),
+                   };
+            write!(stdout,"{}{}{}{}{}",
                termion::cursor::Goto(1, 5 + i as u16),
+               c,
                line,
+               termion::color::Fg(color::Reset),
                termion::cursor::Hide).expect("error drawing");
         }
     }

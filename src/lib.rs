@@ -389,13 +389,34 @@ impl VocaCard {
         }
     }
 
-    pub fn print_to_string(&self, side: u8, session: &VocaSession, format: PrintFormat, wraplist: bool) -> Result<String, std::fmt::Error> {
+    pub fn print(&self, side: u8, session: &VocaSession, format: PrintFormat, wraplist: bool) -> Result<(), std::fmt::Error> {
+        let output = self.fields_to_str(side, session, wraplist)?;
+        for (index, output) in output {
+            match format {
+                PrintFormat::Plain => println!("{}",output),
+                PrintFormat::AnsiColour => {
+                    match index {
+                        0 => println!("{}",Colour::Green.paint(output).to_string()),
+                        1 => println!("{}",Colour::Cyan.paint(output).to_string()),
+                        2 => println!("{}",Colour::Yellow.paint(output).to_string()),
+                        3 => println!("{}",Colour::Purple.paint(output).to_string()),
+                        4 => println!("{}",Colour::Blue.paint(output).to_string()),
+                        _ => println!("{}",output),
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn fields_to_str(&self, side: u8, session: &VocaSession, wraplist: bool) -> Result<Vec<(u8,&str)>, std::fmt::Error> {
         if let Some(showcolumns) = session.showcolumns.get(side as usize) {
-            let mut output: String = String::new();
+            let mut output: Vec<(u8,&str)> = Vec::new();
             for showcolumn in showcolumns.iter() {
-                let field = self.print_field_to_string(*showcolumn, session, format, wraplist)?;
-                output += field.as_str();
-                output += "\n";
+                let lines = self.field_to_str(*showcolumn, session, wraplist)?;
+                for line in lines {
+                    output.push((*showcolumn, line));
+                }
             }
             Ok(output)
         } else {
@@ -404,32 +425,21 @@ impl VocaCard {
         }
     }
 
-    pub fn print_field_to_string(&self, index: u8, session: &VocaSession, format: PrintFormat, wraplist: bool) -> Result<String, std::fmt::Error> {
+
+    pub fn field_to_str(&self, index: u8, session: &VocaSession, wraplist: bool) -> Result<Vec<&str>, std::fmt::Error> {
         if let Some(field) = self.fields.get(index as usize) {
-            let output = if let Some(listdelimiter) = &session.listdelimiter {
+            let output: Vec<&str> = if let Some(listdelimiter) = &session.listdelimiter {
                 if wraplist {
-                    field.replace(listdelimiter.as_str(), "\n")
+                    field.split(listdelimiter.as_str()).collect()
                 } else {
-                    field.clone() //maybe TODO: use Cow instead of cloning for better performance
+                    vec!(field.as_str())
                 }
             } else {
-                field.clone()
+                vec!(field.as_str())
             };
-            match format {
-                PrintFormat::Plain => Ok(output),
-                PrintFormat::AnsiColour => {
-                    match index {
-                        0 => Ok(Colour::Green.paint(output).to_string()),
-                        1 => Ok(Colour::Cyan.paint(output).to_string()),
-                        2 => Ok(Colour::Yellow.paint(output).to_string()),
-                        3 => Ok(Colour::Purple.paint(output).to_string()),
-                        4 => Ok(Colour::Blue.paint(output).to_string()),
-                        _ => Ok(output),
-                    }
-                }
-            }
+            Ok(output)
         } else {
-            Ok(String::new()) //empty string
+            Ok(Vec::new()) //empty string
         }
     }
 
