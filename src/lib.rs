@@ -332,10 +332,10 @@ impl VocaCard {
                     if value == "-" { //empty field placeholder
                         fields.push(String::new());
                     } else {
-                        fields.push(value.to_owned());
+                        fields.push(value.trim().to_owned());
                     }
                 }
-                begin = i
+                begin = i+1
             }
         }
         Ok( VocaCard {

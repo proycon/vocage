@@ -120,7 +120,7 @@ fn main() {
 
 
 pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str) {
-    //let (width, height) = termion::terminal_size().expect("terminal size");
+    let (width, height) = termion::terminal_size().expect("terminal size");
 
     write!(stdout, "{}{}{}{}",
            termion::clear::All,
@@ -130,7 +130,19 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
 
     if let Some(card) = card {
         let lines = card.fields_to_str(side, &session, true).expect("printing card failed (no such side?)");
+        let halftextheight: u16 = (lines.len() / 2) as u16;
+        let y = 1 + if height / 2 > halftextheight {
+            height / 2 - halftextheight
+        } else {
+            1
+        };
         for (i, (column, line)) in lines.into_iter().enumerate() {
+            let halftextwidth: u16 = (line.chars().count() / 2) as u16;
+            let x = if width / 2 > halftextwidth {
+                width / 2 - halftextwidth
+            } else {
+                1
+            };
             let c: color::Fg<&dyn color::Color> =
                    match column {
                         0 => color::Fg(&color::Green),
@@ -141,7 +153,7 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
                         _ => color::Fg(&color::Reset),
                    };
             write!(stdout,"{}{}{}{}{}",
-               termion::cursor::Goto(1, 5 + i as u16),
+               termion::cursor::Goto(x, y + i as u16),
                c,
                line,
                termion::color::Fg(color::Reset),
