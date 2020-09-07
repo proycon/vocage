@@ -59,8 +59,6 @@ fn main() {
 
     let mut stdout = stdout().into_raw_mode().unwrap();
 
-    let mut side: u8 = 0;
-
     let mut status: String = "Use: q to quit, w to save, space to flip, l/→ to promote, h/← to demote, j/↓ for next".to_owned();
 
     //make a copy to prevent problems with the borrow checker
@@ -70,6 +68,7 @@ fn main() {
         let setchoice = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
         if let Some(card) = datasets[setchoice].pick_card_mut(&mut rng, deck, due_only) {
             //show card
+            let mut side: u8 = 0;
             draw(&mut stdout, Some(card), &session, side, status.as_str());
             status.clear();
 
@@ -89,10 +88,11 @@ fn main() {
                      },
                      Key::Char(' ') | Key::Char('\n') => {
                          side += 1;
-                         if side >= card.fields.len() as u8 {
+                         if side >= session.showcolumns.len() as u8 {
                              side = 0;
                          }
-                         break;
+                         //redraw
+                         draw(&mut stdout, Some(card), &session, side, status.as_str());
                      },
                      Key::Char('h') | Key::Left => {
                          card.demote(&session);
@@ -102,6 +102,10 @@ fn main() {
                      Key::Char('l') | Key::Right => {
                          card.promote(&session);
                          status = "Card promoted".to_owned();
+                         break;
+                     },
+                     Key::Char('j') | Key::Down => {
+                         status = "Card skipped".to_owned();
                          break;
                      },
                      _ => {
@@ -122,11 +126,13 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
            termion::cursor::Hide).expect("error drawing");
 
     if let Some(card) = card {
-        let card_output = card.print_to_string(side, &session, PrintFormat::AnsiColour, true).expect("printing card failed");
-        write!(stdout,"{}{}{}",
-           termion::cursor::Goto(1, 5),
-           card_output,
-           termion::cursor::Hide).expect("error drawing");
+        let card_output = card.print_to_string(side, &session, PrintFormat::AnsiColour, true).expect("printing card failed (no such side?)");
+        for (i, line) in card_output.split("\n").enumerate() {
+            write!(stdout,"{}{}{}",
+               termion::cursor::Goto(1, 5 + i as u16),
+               line,
+               termion::cursor::Hide).expect("error drawing");
+        }
     }
 
     stdout.flush().unwrap();

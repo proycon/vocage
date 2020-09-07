@@ -15,16 +15,16 @@ use clap::{App,Arg};
 
 #[derive(Clone)]
 pub struct VocaSession {
-    columns: Vec<String>,
-    decks: Vec<String>,
+    pub columns: Vec<String>,
+    pub decks: Vec<String>,
     ///interval in minutes
-    intervals: Vec<u32>,
-    returntofirst: bool,
+    pub intervals: Vec<u32>,
+    pub returntofirst: bool,
     filename: Option<String>,
     ///Configuration of columns to show for each side of the card
-    showcolumns: Vec<Vec<u8>>,
+    pub showcolumns: Vec<Vec<u8>>,
     ///list delimiter
-    listdelimiter: Option<String>,
+    pub listdelimiter: Option<String>,
     header: bool,
 }
 
@@ -338,7 +338,6 @@ impl VocaCard {
                 begin = i
             }
         }
-        eprintln!("DEBUG: PARSED: {:?}", &fields);
         Ok( VocaCard {
             fields: fields,
             due: due,
@@ -400,6 +399,7 @@ impl VocaCard {
             }
             Ok(output)
         } else {
+            eprintln!("DEBUG: Nothing found for side {}", side);
             Err(fmt::Error)
         }
     }
