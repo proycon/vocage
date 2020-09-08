@@ -4,11 +4,11 @@ extern crate ansi_term;
 extern crate clap;
 
 use std::fs::File;
-use std::io::{Write,Read,BufReader,BufRead,Error,ErrorKind};
+use std::io::{Write,BufReader,BufRead,Error,ErrorKind};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fmt;
 use std::path::PathBuf;
-use rand::prelude::{thread_rng,Rng};
+use rand::prelude::Rng;
 use chrono::NaiveDateTime;
 use ansi_term::Colour;
 use clap::{App,Arg};

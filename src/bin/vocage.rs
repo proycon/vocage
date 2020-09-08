@@ -12,8 +12,7 @@ use termion::color;
 use std::io::{Write, stdout, stdin, Stdout};
 use clap::{Arg, App};
 use rand::prelude::{thread_rng,Rng};
-use chrono::NaiveDateTime;
-use vocage::{VocaData,VocaSession,VocaCard,load_files,PrintFormat};
+use vocage::{VocaSession,VocaCard,load_files};
 
 static NUMCHARS: &[char] = &['1','2','3','4','5','6','7','8','9'];
 
@@ -162,9 +161,20 @@ fn main() {
                      }
                 };
             }
+        } else {
+            write!(stdout, "{}{}{}{}",
+                   termion::clear::All,
+                   termion::cursor::Goto(1, 5),
+                   "No more due cards, saving and exiting",
+                   termion::cursor::Hide).expect("error drawing");
+
+             for dataset in datasets.iter() {
+                 dataset.write().expect("failure saving file");
+             }
+             done = true;
         }
     }
-    write!(stdout,"{}",termion::cursor::Show).expect("error drawing");
+    write!(stdout,"{}\n",termion::cursor::Show).expect("error drawing");
 }
 
 
