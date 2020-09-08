@@ -53,6 +53,11 @@ fn main() {
     let mut datasets = load_files(args.values_of("files").unwrap().collect(), args.is_present("force"));
     for dataset in datasets.iter_mut() {
         dataset.session.set_common_arguments(&args).expect("setting common arguments");
+        if dataset.session.decks.is_empty() && dataset.session.intervals.is_empty() {
+            //no decks or intervals defined yet, set some defaults
+            dataset.session.decks = vec!("immediate","daily","weekly","monthly","quarterly","yearly").iter().map(|s| s.to_string()).collect();
+            dataset.session.intervals = vec!(0,1440,10080,43200,129600,518400);
+        }
     }
 
     let deck: Option<u8> = if args.is_present("limit") {

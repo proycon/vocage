@@ -473,6 +473,7 @@ pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {
                         if data.session.decks != datasets[0].session.decks {
                             if force {
                                 data.session.decks = datasets[0].session.decks.clone();
+                                data.session.intervals = datasets[0].session.intervals.clone();
                             } else {
                                 eprintln!("ERROR: decks of {} differ from those in the first loaded file, refusing to load together (use --force to force it)", filename);
                                 std::process::exit(1);
