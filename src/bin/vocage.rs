@@ -1,6 +1,7 @@
 extern crate rand;
 extern crate clap;
 extern crate termion;
+extern crate chrono;
 extern crate vocage;
 
 
@@ -11,6 +12,7 @@ use termion::color;
 use std::io::{Write, stdout, stdin, Stdout};
 use clap::{Arg, App};
 use rand::prelude::{thread_rng,Rng};
+use chrono::NaiveDateTime;
 use vocage::{VocaData,VocaSession,VocaCard,load_files,PrintFormat};
 
 
@@ -31,7 +33,7 @@ fn main() {
                    )
                   .arg(Arg::with_name("limit")
                     .long("limit")
-                    .short("-l")
+                    .short("-L")
                     .takes_value(true)
                     .help("Limit to this deck only (all decks will be considered by default)")
                    )
@@ -42,12 +44,16 @@ fn main() {
                     .index(1)
                     .required(true)
                    )
+                  .args(&VocaSession::common_arguments())
                   .get_matches();
 
 
     let mut rng = thread_rng();
 
     let mut datasets = load_files(args.values_of("files").unwrap().collect(), args.is_present("force"));
+    for dataset in datasets.iter_mut() {
+        dataset.session.set_common_arguments(&args).expect("setting common arguments");
+    }
 
     let deck: Option<u8> = if args.is_present("limit") {
         Some(datasets[0].session.get_deck_by_name(args.value_of("limit").unwrap()).unwrap())
@@ -62,15 +68,31 @@ fn main() {
 
     let mut status: String = "Use: q to quit, w to save, space to flip, l/→ to promote, h/← to demote, j/↓ for next".to_owned();
 
+    let mut history: Vec<(usize,usize)> = Vec::new();
+    let mut pick_specific: Option<(usize,usize)> = None; //(set,card), will select a random card if set to None
+
     //make a copy to prevent problems with the borrow checker
     let session = datasets[0].session.clone();
 
     while !done {
-        let setchoice = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
-        if let Some(card) = datasets[setchoice].pick_card_mut(&mut rng, deck, due_only) {
+        if let Some(card) = match pick_specific {
+                Some((setindex, cardindex)) => datasets[setindex].cards.get_mut(cardindex),
+                None => {
+                    //pick a random set
+                    let setindex = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
+                    //pick a random card
+                    if let Some(cardindex) = datasets[setindex].random_index(&mut rng, deck, due_only) {
+                        history.push((setindex,cardindex));
+                        datasets[setindex].cards.get_mut(cardindex)
+                    } else {
+                        None
+                    }
+                }
+            } {
+            pick_specific = None; //reset
             //show card
             let mut side: u8 = 0;
-            draw(&mut stdout, Some(card), &session, side, status.as_str());
+            draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len());
             status.clear();
 
             //process input
@@ -93,20 +115,30 @@ fn main() {
                              side = 0;
                          }
                          //redraw
-                         draw(&mut stdout, Some(card), &session, side, status.as_str());
+                         draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len());
                      },
                      Key::Char('h') | Key::Left => {
-                         card.demote(&session);
-                         status = "Card demoted".to_owned();
+                         if card.demote(&session) {
+                             status = format!("Card demoted to deck {}", card.deck).to_owned();
+                         } else {
+                             status = "Already on first deck".to_owned();
+                         }
                          break;
                      },
                      Key::Char('l') | Key::Right => {
-                         card.promote(&session);
-                         status = "Card promoted".to_owned();
+                         if card.promote(&session) {
+                             status = format!("Card promoted to deck {}", card.deck).to_owned();
+                         } else {
+                             status = "Already on last deck".to_owned();
+                         }
                          break;
                      },
                      Key::Char('j') | Key::Down => {
                          status = "Card skipped".to_owned();
+                         break;
+                     },
+                     Key::Char('k') | Key::Up => {
+                         pick_specific = history.pop();
                          break;
                      },
                      _ => {
@@ -119,7 +151,7 @@ fn main() {
 }
 
 
-pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str) {
+pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize) {
     let (width, height) = termion::terminal_size().expect("terminal size");
 
     write!(stdout, "{}{}{}{}",
@@ -159,6 +191,33 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
                termion::color::Fg(color::Reset),
                termion::cursor::Hide).expect("error drawing");
         }
+        write!(stdout,"{}{}{}",
+           termion::cursor::Goto(1,height),
+           format!("#{} - Deck: {} ({}/{}) - Due: {} ({})",
+                seqnr,
+                session.decks.get(card.deck as usize).unwrap_or(&"none".to_owned()),
+                card.deck+1,
+                session.decks.len(),
+                match card.due {
+                    Some(datetime) => datetime.format("%Y-%m-%d %H:%M:%S").to_string(),
+                    None => "any time".to_owned()
+                },
+                match session.intervals.get(card.deck as usize) {
+                    Some(i) if *i >= 1440 => {
+                        format!("{} days",i/1440)
+                    },
+                    Some(i) if *i >= 60 => {
+                        format!("{} hours",i/60)
+                    },
+                    Some(i) => {
+                        format!("{} mins",i)
+                    },
+                    None => {
+                        "immediate".to_owned()
+                    }
+                },
+           ),
+           termion::cursor::Hide).expect("error drawing");
     }
 
     stdout.flush().unwrap();

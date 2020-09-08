@@ -318,8 +318,8 @@ impl VocaCard {
                     i
                 }];
                 if value.starts_with("deck#") {
-                    if let Ok(num) = &value[5..].parse() {
-                        deck = *num;
+                    if let Ok(num) = &value[5..].parse::<u8>() {
+                        deck = *num - 1;
                     }
                 } else if value.starts_with("due@") {
                     due = match NaiveDateTime::parse_from_str(&value[4..], "%Y-%m-%d %H:%M:%S") {
@@ -358,7 +358,7 @@ impl VocaCard {
             }
         }
         if self.deck > 0 {
-            result = format!("{}\tdeck#{}",result, self.deck);
+            result = format!("{}\tdeck#{}",result, self.deck + 1);
         }
         if let Some(due) = self.due {
             result = format!("{}\tdue@{}",result, due.format("%Y-%m-%d %H:%M:%S").to_string().as_str() );
@@ -375,19 +375,23 @@ impl VocaCard {
         self.deck = deck;
     }
 
-    pub fn promote(&mut self, session: &VocaSession) {
+    pub fn promote(&mut self, session: &VocaSession) -> bool {
         if ((self.deck+1) as usize) < session.decks.len() {
             self.move_to_deck(self.deck+1, session);
+            true
         } else {
             self.move_to_deck(self.deck, session);
+            false
         }
     }
 
-    pub fn demote(&mut self, session: &VocaSession) {
+    pub fn demote(&mut self, session: &VocaSession)  -> bool {
         if self.deck > 0 && !session.returntofirst {
             self.move_to_deck(self.deck-1, session);
+            true
         } else {
             self.move_to_deck(0, session);
+            false
         }
     }
 
