@@ -215,7 +215,7 @@ impl VocaData {
     }
 
 
-    pub fn random_index(&self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<usize> {
+    pub fn random_index(&self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<(usize,usize)> {
         let mut indices: Vec<usize> = Vec::new();
 
         let now: NaiveDateTime = NaiveDateTime::from_timestamp(
@@ -231,20 +231,20 @@ impl VocaData {
         }
 
         if !indices.is_empty() {
-            return Some(indices[rng.gen_range(0, indices.len())]);
+            return Some((indices[rng.gen_range(0, indices.len())], indices.len()));
         }
         None
     }
 
     pub fn pick_card<'a>(&'a self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<&'a VocaCard> {
-        if let Some(choice) = self.random_index(rng, deck, due_only) {
+        if let Some((choice,_)) = self.random_index(rng, deck, due_only) {
             return Some(&self.cards[choice]);
         }
         None
     }
 
     pub fn pick_card_mut<'a>(&'a mut self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<&'a mut VocaCard> {
-        if let Some(choice) = self.random_index(rng, deck, due_only) {
+        if let Some((choice,_)) = self.random_index(rng, deck, due_only) {
             return Some(&mut self.cards[choice]);
         }
         None
@@ -366,13 +366,17 @@ impl VocaCard {
         result
     }
 
-    pub fn move_to_deck(&mut self, deck: u8, session: &VocaSession)  {
+    pub fn move_to_deck(&mut self, deck: u8, session: &VocaSession) -> bool {
+        if deck >= session.decks.len() as u8 {
+            return false;
+        }
         if let Some(interval) = session.intervals.get(deck as usize) {
             self.due = Some(NaiveDateTime::from_timestamp(
                 SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64 + (interval * 60) as i64, 0
             ));
         }
         self.deck = deck;
+        true
     }
 
     pub fn promote(&mut self, session: &VocaSession) -> bool {

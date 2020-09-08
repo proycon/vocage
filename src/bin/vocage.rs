@@ -15,6 +15,7 @@ use rand::prelude::{thread_rng,Rng};
 use chrono::NaiveDateTime;
 use vocage::{VocaData,VocaSession,VocaCard,load_files,PrintFormat};
 
+static NUMCHARS: &[char] = &['1','2','3','4','5','6','7','8','9'];
 
 fn main() {
     let args = App::new("Vocage :: Flash cards")
@@ -71,6 +72,8 @@ fn main() {
     let mut history: Vec<(usize,usize)> = Vec::new();
     let mut pick_specific: Option<(usize,usize)> = None; //(set,card), will select a random card if set to None
 
+    let mut duecards = 0;
+
     //make a copy to prevent problems with the borrow checker
     let session = datasets[0].session.clone();
 
@@ -81,7 +84,8 @@ fn main() {
                     //pick a random set
                     let setindex = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
                     //pick a random card
-                    if let Some(cardindex) = datasets[setindex].random_index(&mut rng, deck, due_only) {
+                    if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only) {
+                        duecards = totalcards;
                         history.push((setindex,cardindex));
                         datasets[setindex].cards.get_mut(cardindex)
                     } else {
@@ -92,7 +96,7 @@ fn main() {
             pick_specific = None; //reset
             //show card
             let mut side: u8 = 0;
-            draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len());
+            draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len(), duecards);
             status.clear();
 
             //process input
@@ -103,6 +107,10 @@ fn main() {
                              dataset.write().expect("failure saving file");
                          }
                          status = "Saved...".to_owned();
+                         pick_specific = history.pop(); //make sure we re-show the current item
+                         if pick_specific.is_some() {
+                             history.push(pick_specific.clone().unwrap());
+                         }
                          break;
                      },
                      Key::Char('q') | Key::Esc => {
@@ -115,11 +123,11 @@ fn main() {
                              side = 0;
                          }
                          //redraw
-                         draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len());
+                         draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len(), duecards);
                      },
                      Key::Char('h') | Key::Left => {
                          if card.demote(&session) {
-                             status = format!("Card demoted to deck {}", card.deck).to_owned();
+                             status = format!("Card demoted to deck {}", card.deck+1).to_owned();
                          } else {
                              status = "Already on first deck".to_owned();
                          }
@@ -127,7 +135,7 @@ fn main() {
                      },
                      Key::Char('l') | Key::Right => {
                          if card.promote(&session) {
-                             status = format!("Card promoted to deck {}", card.deck).to_owned();
+                             status = format!("Card promoted to deck {}", card.deck+1).to_owned();
                          } else {
                              status = "Already on last deck".to_owned();
                          }
@@ -141,6 +149,15 @@ fn main() {
                          pick_specific = history.pop();
                          break;
                      },
+                     Key::Char(c) if NUMCHARS.contains(&c) => {
+                         let targetdeck = c as u8 - 49;
+                         if card.move_to_deck(targetdeck, &session) {
+                             status = format!("Card promoted to deck {}", targetdeck+1).to_owned();
+                         } else {
+                             status = "Already on last deck".to_owned();
+                         }
+                         break;
+                     },
                      _ => {
                      }
                 };
@@ -151,7 +168,7 @@ fn main() {
 }
 
 
-pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize) {
+pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize, duecards: usize) {
     let (width, height) = termion::terminal_size().expect("terminal size");
 
     write!(stdout, "{}{}{}{}",
@@ -193,8 +210,9 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
         }
         write!(stdout,"{}{}{}",
            termion::cursor::Goto(1,height),
-           format!("#{} - Deck: {} ({}/{}) - Due: {} ({})",
+           format!("#{}/{} - Deck: {} ({}/{}) - Due: {} ({})",
                 seqnr,
+                duecards,
                 session.decks.get(card.deck as usize).unwrap_or(&"none".to_owned()),
                 card.deck+1,
                 session.decks.len(),
