@@ -72,6 +72,7 @@ fn main() {
     let mut pick_specific: Option<(usize,usize)> = None; //(set,card), will select a random card if set to None
 
     let mut duecards = 0;
+    let mut tries = 0;
 
     //make a copy to prevent problems with the borrow checker
     let session = datasets[0].session.clone();
@@ -86,8 +87,10 @@ fn main() {
                     if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only) {
                         duecards = totalcards;
                         history.push((setindex,cardindex));
+                        tries = 0; //reset
                         datasets[setindex].cards.get_mut(cardindex)
                     } else {
+                        tries += 1;
                         None
                     }
                 }
@@ -161,11 +164,11 @@ fn main() {
                      }
                 };
             }
-        } else {
+        } else if tries > 100 { //after a hundred attempted picks we give up
             write!(stdout, "{}{}{}{}",
                    termion::clear::All,
                    termion::cursor::Goto(1, 5),
-                   "No more due cards, saving and exiting",
+                   "No more cards are due for now, well done! Saving and exiting...",
                    termion::cursor::Hide).expect("error drawing");
 
              for dataset in datasets.iter() {
