@@ -353,6 +353,8 @@ impl VocaCard {
             }
             if field.is_empty() {
                 result += "-";
+            } else {
+                result += field;
             }
         }
         if self.deck > 0 {
