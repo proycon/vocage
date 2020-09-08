@@ -231,7 +231,7 @@ impl VocaData {
         }
 
         if !indices.is_empty() {
-            return Some(rng.gen_range(0, indices.len()));
+            return Some(indices[rng.gen_range(0, indices.len())]);
         }
         None
     }
