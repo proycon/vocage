@@ -180,6 +180,13 @@ fn main() {
 
 pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize, duecards: usize) {
     let (width, height) = termion::terminal_size().expect("terminal size");
+    if width < 15 || height < 6 {
+        write!(stdout, "{}{}Terminal too small!{}",
+               termion::clear::All,
+               termion::cursor::Goto(1, 1),
+               termion::cursor::Hide).expect("error drawing");
+        return;
+    }
 
     write!(stdout, "{}{}{}{}",
            termion::clear::All,
