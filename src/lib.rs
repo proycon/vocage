@@ -31,6 +31,7 @@ pub struct VocaSession {
 pub struct VocaData {
     pub session: VocaSession,
     pub cards: Vec<VocaCard>,
+    pub comments: Vec<(usize,String)>,
 }
 
 pub struct VocaCard {
@@ -168,6 +169,7 @@ impl VocaData {
         let file = File::open(filename)?;
         let reader = BufReader::new(file);
         let mut cards: Vec<VocaCard> = Vec::new();
+        let mut comments: Vec<(usize,String)> = Vec::new();
         let mut header: bool = false;
         let mut columncount: u8 = 0;
         let mut metadata_args: Vec<String> = vec!();
@@ -183,6 +185,8 @@ impl VocaData {
                     } else {
                         metadata_args.push(format!("--{}",&line[1..]).to_owned());
                     }
+                } else {
+                    comments.push( (cards.len(), line) ); //we store the index so we can later serialise it in proper order again
                 }
             } else if !line.is_empty() {
                 let card = VocaCard::parse_line(&line)?;
@@ -197,6 +201,9 @@ impl VocaData {
                     }
                     cards.push(card);
                 }
+            } else {
+                //empty lines are considered comments for our purposes, we retain them in the output
+                comments.push( (cards.len(), line) );
             }
         }
         if !metadata_args.contains(&"--columns".to_owned()) {
@@ -211,6 +218,7 @@ impl VocaData {
         Ok(VocaData {
             cards: cards,
             session: session,
+            comments: comments,
         })
     }
 
@@ -261,9 +269,26 @@ impl VocaData {
             file.write(self.session.columns.join("\t").as_bytes() )?;
             file.write(b"\n")?;
         }
-        for card in self.cards.iter() {
+        let mut nextcommentindex = if !self.comments.is_empty() { //initialise
+            Some(self.comments[0].0)
+        } else {
+            None
+        };
+        for (i,card) in self.cards.iter().enumerate() {
             file.write(card.write_to_string().as_bytes())?;
             file.write(b"\n")?;
+            if nextcommentindex.is_some() && i + 1 == nextcommentindex.unwrap() {
+                for (commentindex, comment) in self.comments.iter() {
+                    if *commentindex == i + 1 {
+                        file.write(comment.as_bytes())?;
+                        file.write(b"\n")?;
+                        nextcommentindex = None; //reset
+                    } else if *commentindex > i + 1 {
+                        nextcommentindex = Some(*commentindex); //set for next
+                        break;
+                    }
+                }
+            }
         }
         //metadata last
         file.write(b"#METADATA:\n")?; //begin of metadata
