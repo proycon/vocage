@@ -30,6 +30,7 @@ The aim of this software is to keep things simple and minimalistic and to focus 
   to use files as an easy grouping mechanism (e.g. a file per level, per domain, or per word class).
 * The 'fancy' TUI can be disabled by setting the ``--minimal`` parameter, in case you want to interact with vocage
   from shell scripts or other software.
+* Proper unicode support
 * Colour support, each column gets a colour (can be disabled in ``--minimal`` mode)
 * Arrow keys and vim-style movements (hjkl)
 * Written in Rust; fast & efficient
