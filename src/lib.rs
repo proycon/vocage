@@ -333,12 +333,12 @@ impl VocaCard {
         let mut fields: Vec<String> =  Vec::new();
         let mut deck: u8 = 0;
         let mut due: Option<NaiveDateTime> = None;
-        let length = line.len();
-        for (i, c) in line.char_indices() {
-            if (i == length -1) || (c == '\t')  {
+        let length = line.chars().count();
+        for (j, (i, c)) in line.char_indices().enumerate() {
+            if (j == length -1) || (c == '\t')  {
                 //handle previous column
-                let value = &line[begin..if i == length - 1 {
-                    length
+                let value = &line[begin..if j == length - 1 {
+                    line.len()
                 } else {
                     i
                 }];
