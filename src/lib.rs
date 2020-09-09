@@ -471,7 +471,7 @@ pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {
                             std::process::exit(1);
                         }
                         if data.session.decks != datasets[0].session.decks {
-                            if force {
+                            if force || data.session.decks.is_empty() {
                                 data.session.decks = datasets[0].session.decks.clone();
                                 data.session.intervals = datasets[0].session.intervals.clone();
                             } else {
