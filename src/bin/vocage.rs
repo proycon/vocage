@@ -12,7 +12,7 @@ use termion::color;
 use std::io::{Write, stdout, stdin, Stdout};
 use clap::{Arg, App};
 use rand::prelude::{thread_rng,Rng};
-use vocage::{VocaSession,VocaCard,load_files};
+use vocage::{VocaSession,VocaCard,PrintFormat,load_files};
 
 static NUMCHARS: &[char] = &['1','2','3','4','5','6','7','8','9'];
 
@@ -45,6 +45,11 @@ fn main() {
                     .required(true)
                    )
                   .args(&VocaSession::common_arguments())
+                  .arg(Arg::with_name("minimal")
+                    .takes_value(true)
+                    .long("minimal")
+                    .help("Minimal interface, no TUI, just print to stdout. The value for this parameter is either 'plain' or 'colour', the latter of which will still produce ANSI colours.")
+                   )
                   .get_matches();
 
 
@@ -66,10 +71,19 @@ fn main() {
         None
     };
     let due_only: bool = !args.is_present("all");
+    let minimal: Option<PrintFormat> = match args.value_of("minimal") {
+        None => None,
+        Some("color") | Some("colour") => Some(PrintFormat::AnsiColour),
+        _ => Some(PrintFormat::Plain),
+    };
 
     let mut done = false;
 
-    let mut stdout = stdout().into_raw_mode().unwrap();
+    let mut stdout: Box<dyn Write> = if minimal.is_none() {
+        Box::new(stdout().into_raw_mode().unwrap())
+    } else {
+        Box::new(stdout())
+    };
 
     let mut status: String = "Use: q to quit, w to save, space to flip, l/→ to promote, h/← to demote, j/↓ for next".to_owned();
 
@@ -103,7 +117,7 @@ fn main() {
             pick_specific = None; //reset
             //show card
             let mut side: u8 = 0;
-            draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len(), duecards);
+            draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len(), duecards, minimal);
             status.clear();
 
             //process input
@@ -130,7 +144,7 @@ fn main() {
                              side = 0;
                          }
                          //redraw
-                         draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len(), duecards);
+                         draw(&mut stdout, Some(card), &session, side, status.as_str(), history.len(), duecards, minimal);
                      },
                      Key::Char('h') | Key::Left => {
                          if card.demote(&session) {
@@ -186,9 +200,14 @@ fn main() {
 }
 
 
-pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize, duecards: usize) {
-    let (width, height) = termion::terminal_size().expect("terminal size");
-    if width < 15 || height < 6 {
+pub fn draw(stdout: &mut impl Write, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize, duecards: usize, minimal: Option<PrintFormat>) {
+    let (width, height) = if minimal.is_none() {
+        termion::terminal_size().expect("terminal size")
+    } else {
+        (0,0)
+    };
+
+    if minimal.is_none() && (width < 15 || height < 6) {
         write!(stdout, "{}{}Terminal too small!{}",
                termion::clear::All,
                termion::cursor::Goto(1, 1),
@@ -196,23 +215,29 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
         return;
     }
 
-    write!(stdout, "{}{}{}{}",
-           termion::clear::All,
-           termion::cursor::Goto(1, 1),
-           status,
-           termion::cursor::Hide).expect("error drawing");
+    if minimal.is_none() {
+        write!(stdout, "{}{}{}{}",
+               termion::clear::All,
+               termion::cursor::Goto(1, 1),
+               status,
+               termion::cursor::Hide).expect("error drawing");
+    }
 
     if let Some(card) = card {
         let lines = card.fields_to_str(side, &session, true).expect("printing card failed (no such side?)");
         let halftextheight: u16 = (lines.len() / 2) as u16;
-        let y = 1 + if height / 2 > halftextheight {
+        let y = 1 + if height == 0 {
+            0 //just so we dont fail in minimal mode
+        } else if height / 2 > halftextheight {
             height / 2 - halftextheight
         } else {
             1
         };
         for (i, (column, line)) in lines.into_iter().enumerate() {
             let halftextwidth: u16 = (line.chars().count() / 2) as u16;
-            let x = if width / 2 > halftextwidth {
+            let x = if width == 0 {
+                0 //just so we dont fail in minimal mode
+            } else if width / 2 > halftextwidth {
                 width / 2 - halftextwidth
             } else {
                 1
@@ -226,41 +251,51 @@ pub fn draw(stdout: &mut RawTerminal<Stdout>, card: Option<&VocaCard>, session: 
                         4 => color::Fg(&color::Blue),
                         _ => color::Fg(&color::Reset),
                    };
-            write!(stdout,"{}{}{}{}{}",
-               termion::cursor::Goto(x, y + i as u16),
-               c,
-               line,
-               termion::color::Fg(color::Reset),
+            if let Some(minimal) = minimal {
+                if minimal == PrintFormat::AnsiColour {
+                    write!(stdout,"{}{}{}\r\n",c,line,termion::color::Fg(color::Reset)).expect("error drawing (minimal)");
+                } else {
+                    write!(stdout,"{}\n",line).expect("error drawing (minimal)");
+                }
+            } else {
+                write!(stdout,"{}{}{}{}{}",
+                   termion::cursor::Goto(x, y + i as u16),
+                   c,
+                   line,
+                   termion::color::Fg(color::Reset),
+                   termion::cursor::Hide).expect("error drawing");
+            }
+        }
+        if minimal.is_none() {
+            write!(stdout,"{}{}{}",
+               termion::cursor::Goto(1,height),
+               format!("#{}/{} - Deck: {} ({}/{}) - Due: {} ({})",
+                    seqnr,
+                    duecards,
+                    session.decks.get(card.deck as usize).unwrap_or(&"none".to_owned()),
+                    card.deck+1,
+                    session.decks.len(),
+                    match card.due {
+                        Some(datetime) => datetime.format("%Y-%m-%d %H:%M:%S").to_string(),
+                        None => "any time".to_owned()
+                    },
+                    match session.intervals.get(card.deck as usize) {
+                        Some(i) if *i >= 1440 => {
+                            format!("{} days",i/1440)
+                        },
+                        Some(i) if *i >= 60 => {
+                            format!("{} hours",i/60)
+                        },
+                        Some(i) => {
+                            format!("{} mins",i)
+                        },
+                        None => {
+                            "immediate".to_owned()
+                        }
+                    },
+               ),
                termion::cursor::Hide).expect("error drawing");
         }
-        write!(stdout,"{}{}{}",
-           termion::cursor::Goto(1,height),
-           format!("#{}/{} - Deck: {} ({}/{}) - Due: {} ({})",
-                seqnr,
-                duecards,
-                session.decks.get(card.deck as usize).unwrap_or(&"none".to_owned()),
-                card.deck+1,
-                session.decks.len(),
-                match card.due {
-                    Some(datetime) => datetime.format("%Y-%m-%d %H:%M:%S").to_string(),
-                    None => "any time".to_owned()
-                },
-                match session.intervals.get(card.deck as usize) {
-                    Some(i) if *i >= 1440 => {
-                        format!("{} days",i/1440)
-                    },
-                    Some(i) if *i >= 60 => {
-                        format!("{} hours",i/60)
-                    },
-                    Some(i) => {
-                        format!("{} mins",i)
-                    },
-                    None => {
-                        "immediate".to_owned()
-                    }
-                },
-           ),
-           termion::cursor::Hide).expect("error drawing");
     }
 
     stdout.flush().unwrap();

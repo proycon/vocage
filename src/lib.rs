@@ -39,7 +39,7 @@ pub struct VocaCard {
     pub deck: u8
 }
 
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug,Copy,Clone,PartialEq)]
 pub enum PrintFormat {
     Plain,
     AnsiColour
@@ -104,9 +104,9 @@ impl VocaSession {
             self.showcolumns.clear();
             for showcolumns in showcolumns {
                 self.showcolumns.push(showcolumns.trim().split(",").map( |s|
-                    self.columns.iter().enumerate() .find(|&r| r.1 == s.trim() )
-                    .expect(format!("ERROR: showcolumns references a non-existing column: {}",s).as_str())
-                    .0
+                        self.columns.iter().enumerate() .find(|&r| r.1 == s.trim() )
+                        .expect(format!("ERROR: showcolumns references a non-existing column: {}",s).as_str())
+                        .0
                 ).map(|n| n as u8 ).collect());
             }
         }
@@ -193,7 +193,7 @@ impl VocaData {
                 } else {
                     let length = card.fields.len() as u8;
                     if length > columncount {
-                       columncount = length;
+                        columncount = length;
                     }
                     cards.push(card);
                 }
@@ -372,7 +372,7 @@ impl VocaCard {
         }
         if let Some(interval) = session.intervals.get(deck as usize) {
             self.due = Some(NaiveDateTime::from_timestamp(
-                SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64 + (interval * 60) as i64, 0
+                    SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64 + (interval * 60) as i64, 0
             ));
         }
         self.deck = deck;
