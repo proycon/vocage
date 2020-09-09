@@ -12,7 +12,8 @@ The aim of this software is to keep things simple and minimalistic and to focus 
 ## Features & non-features
 
 * Data is stored in a simple plain-text tab-separated values (TSV) format. So you can edit your cards in your favourite
-  text editor or spreadsheet program. Vocage itself does not provide editing facilities.
+  text editor or spreadsheet program (use CSV export and set delimiter to tab and quotes to none).
+  Vocage itself does not provide editing facilities.
 * Progress is stored right inside the TSV files (added columns for the deck a card is on and when it is due). This keeps
   everything in one place. You could keep your vocabulary sets in git, if you want.
 * Configuration is done via command line parameters that can also be stored as comments in the TSV file for quick loading:
@@ -30,10 +31,10 @@ The aim of this software is to keep things simple and minimalistic and to focus 
 
 ## Installation
 
-Install it using Rust's package manager:
+Install vocage using Rust's package manager:
 
 ```
-cargo install sesdiff
+cargo install vocage
 ```
 
 No cargo/rust on your system yet? Do ``sudo apt install cargo`` on Debian/ubuntu based systems, ``brew install rust`` on mac, or use [rustup](https://rustup.rs/).
