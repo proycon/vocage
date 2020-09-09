@@ -11,17 +11,22 @@ The aim of this software is to keep things simple and minimalistic and to focus 
 
 ## Features & non-features
 
-* Data is stored in a simple plain-text tab-separated values (TSV) format. So you can edit your cards in your favourite
+* Data is stored in a **simple plain-text tab-separated values format** (TSV). So you can edit your cards in your favourite
   text editor or spreadsheet program (use CSV export and set delimiter to tab and quotes to none).
   Vocage itself does not provide editing facilities.
-* Progress is stored right inside the TSV files (added columns for the deck a card is on and when it is due). This keeps
-  everything in one place. You could keep your vocabulary sets in git, if you want.
-* Configuration is done via command line parameters that can also be stored as comments in the TSV file for quick loading:
-    * You determine what columns to show on which side of the card. Traditionally there's a front
-        side and a back side, but you can define as many sides as you want.
-    * Deck/interval configuration can be passed as command line parameters, and is stored as comments in the TSV file.
-    * Sane defaults; if no configuration is specified some sane defaults will be used
-* Can load multiple vocabulary files (TSV) at once if they have the same column layout. This allows you
+    * All lines starting with ``#`` are considered comments. This also serves to quickly disable some cards without
+        actually deleting them.
+* Your learning progress is stored right inside the TSV files, simply by added one column for the deck a card is in, and one for when it is due. This keeps
+  everything in one place and makes it easy to process with external tools. You could keep your vocabulary sets in git, if you want.
+* Configuration is done via **command line parameters** that *can also be stored as comments at the end of the TSV file for quick loading*:
+    * The columns are defined either as a header line on the very first line (in upper case!),
+      or more explicitly using ``--columns``.
+    * You determine what columns to show on which side of the card using ``--showcards``, which can be invoked multiple
+        times, once per side. Traditionally there's a front
+        side and a back side to a card, but you can define as many sides as you want.
+    * Define deck names and their intervals.
+    * Sane defaults; if no configuration is specified some sane defaults will be used.
+* Load multiple vocabulary files (TSV) together, provided they have the same column layout. This allows you
   to use files as an easy grouping mechanism (e.g. a file per level, per domain, or per word class).
 * The 'fancy' TUI can be disabled by setting the ``--minimal`` parameter, in case you want to interact with vocage
   from shell scripts or other software.
