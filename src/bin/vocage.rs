@@ -75,7 +75,7 @@ fn main() {
         None
     };
     let due_only: bool = !args.is_present("all");
-    let seen_only: bool = !args.is_present("seen");
+    let seen_only: bool = args.is_present("seen");
     let minimal: Option<PrintFormat> = match args.value_of("minimal") {
         None => None,
         Some("color") | Some("colour") => Some(PrintFormat::AnsiColour),
