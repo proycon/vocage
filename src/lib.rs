@@ -180,10 +180,10 @@ impl VocaData {
                 if line.starts_with("#--") {
                     //metadata
                     if let Some((index,_)) = line.chars().enumerate().find(|&r| r.1 == ' ') {
-                        metadata_args.push(format!("--{}",&line[1..index]).to_owned());
+                        metadata_args.push(format!("--{}",&line[3..index]).to_owned());
                         metadata_args.push(line[index+1..].to_owned());
                     } else {
-                        metadata_args.push(format!("--{}",&line[1..]).to_owned());
+                        metadata_args.push(format!("--{}",&line[3..]).to_owned());
                     }
                 } else {
                     comments.push( (cards.len(), line) ); //we store the index so we can later serialise it in proper order again
@@ -209,7 +209,7 @@ impl VocaData {
         if !metadata_args.contains(&"--columns".to_owned()) {
             //no column/header information provided, infer
             metadata_args.push("--columns".to_owned());
-            metadata_args.push((1..=columncount).map(|n| format!("column#{}",n).to_owned()).collect() );
+            metadata_args.push((1..=columncount).map(|n| format!("column#{}",n).to_owned()).collect::<Vec<String>>().join(",") );
         }
         let mut session = VocaSession::from_arguments(metadata_args.iter().map(|s| s.as_str()).collect())?;
         session.header = header;
@@ -458,7 +458,6 @@ impl VocaCard {
             }
             Ok(output)
         } else {
-            eprintln!("DEBUG: Nothing found for side {}", side);
             Err(fmt::Error)
         }
     }
