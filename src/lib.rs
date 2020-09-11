@@ -223,7 +223,7 @@ impl VocaData {
     }
 
 
-    pub fn random_index(&self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<(usize,usize)> {
+    pub fn random_index(&self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool, seen_only: bool) -> Option<(usize,usize)> {
         let mut indices: Vec<usize> = Vec::new();
 
         let now: NaiveDateTime = NaiveDateTime::from_timestamp(
@@ -232,6 +232,9 @@ impl VocaData {
 
         for (i, card) in self.cards.iter().enumerate() {
             if deck.is_none() || card.deck == deck.unwrap() {
+                if card.due.is_none() && seen_only {
+                    continue;
+                }
                 if !due_only || (due_only && (card.due.is_none() || card.due.unwrap() < now)) {
                     indices.push(i);
                 }
@@ -244,15 +247,15 @@ impl VocaData {
         None
     }
 
-    pub fn pick_card<'a>(&'a self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<&'a VocaCard> {
-        if let Some((choice,_)) = self.random_index(rng, deck, due_only) {
+    pub fn pick_card<'a>(&'a self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool, seen_only: bool) -> Option<&'a VocaCard> {
+        if let Some((choice,_)) = self.random_index(rng, deck, due_only, seen_only) {
             return Some(&self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_card_mut<'a>(&'a mut self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool) -> Option<&'a mut VocaCard> {
-        if let Some((choice,_)) = self.random_index(rng, deck, due_only) {
+    pub fn pick_card_mut<'a>(&'a mut self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool, seen_only: bool) -> Option<&'a mut VocaCard> {
+        if let Some((choice,_)) = self.random_index(rng, deck, due_only, seen_only) {
             return Some(&mut self.cards[choice]);
         }
         None

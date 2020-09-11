@@ -50,6 +50,10 @@ fn main() {
                     .long("minimal")
                     .help("Minimal interface, no TUI, just print to stdout. The value for this parameter is either 'plain' or 'colour', the latter of which will still produce ANSI colours.")
                    )
+                  .arg(Arg::with_name("seen")
+                    .long("seen")
+                    .help("Only present cards that have been previously seen (no unseen cards)")
+                   )
                   .get_matches();
 
 
@@ -71,6 +75,7 @@ fn main() {
         None
     };
     let due_only: bool = !args.is_present("all");
+    let seen_only: bool = !args.is_present("seen");
     let minimal: Option<PrintFormat> = match args.value_of("minimal") {
         None => None,
         Some("color") | Some("colour") => Some(PrintFormat::AnsiColour),
@@ -103,7 +108,7 @@ fn main() {
                     //pick a random set
                     let setindex = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
                     //pick a random card
-                    if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only) {
+                    if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only, seen_only) {
                         duecards = totalcards;
                         history.push((setindex,cardindex));
                         tries = 0; //reset
@@ -148,7 +153,7 @@ fn main() {
                      },
                      Key::Char('h') | Key::Left => {
                          if card.demote(&session) {
-                             status = format!("Card demoted to deck {}", card.deck+1).to_owned();
+                             status = format!("Card demoted to deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
                          } else {
                              status = "Already on first deck".to_owned();
                          }
@@ -156,26 +161,32 @@ fn main() {
                      },
                      Key::Char('l') | Key::Right => {
                          if card.promote(&session) {
-                             status = format!("Card promoted to deck {}", card.deck+1).to_owned();
+                             status = format!("Card promoted to deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
                          } else {
                              status = "Already on last deck".to_owned();
                          }
                          break;
                      },
                      Key::Char('j') | Key::Down => {
+                         card.move_to_deck(card.deck, &session);
+                         status = format!("Card retained on deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
+                         break;
+                     },
+                     Key::Char('J') | Key::PageDown => {
                          status = "Card skipped".to_owned();
                          break;
                      },
-                     Key::Char('k') | Key::Up => {
+                     Key::Char('k') | Key::Up | Key::PageUp => {
+                         status = "Showing previous card".to_owned();
                          pick_specific = history.pop();
                          break;
                      },
                      Key::Char(c) if NUMCHARS.contains(&c) => {
                          let targetdeck = c as u8 - 49;
                          if card.move_to_deck(targetdeck, &session) {
-                             status = format!("Card promoted to deck {}", targetdeck+1).to_owned();
+                             status = format!("Card moved to deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
                          } else {
-                             status = "Already on last deck".to_owned();
+                             status = "Invalid deck".to_owned();
                          }
                          break;
                      },
