@@ -7,9 +7,9 @@ extern crate vocage;
 
 use termion::event::Key;
 use termion::input::TermRead;
-use termion::raw::{IntoRawMode,RawTerminal};
+use termion::raw::{IntoRawMode};
 use termion::color;
-use std::io::{Write, stdout, stdin, Stdout};
+use std::io::{Write, stdout, stdin};
 use clap::{Arg, App};
 use rand::prelude::{thread_rng,Rng};
 use vocage::{VocaSession,VocaCard,PrintFormat,load_files};
