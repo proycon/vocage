@@ -326,7 +326,6 @@ impl VocaData {
             }
         }
         //metadata last
-        file.write(b"#METADATA:\n")?; //begin of metadata
         if !self.session.decks.is_empty() {
             file.write(b"#--decks ")?;
             file.write(self.session.decks.join(",").as_bytes() )?;
