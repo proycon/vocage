@@ -9,6 +9,8 @@ to learning languages.
 
 The aim of this software is to keep things simple and minimalistic and to focus on one thing only (the unix philosphy).
 
+![Example of chinese vocabulary learning with vocage](screen1.gif)
+
 ## Features & non-features
 
 * Data is stored in a **simple plain-text tab-separated values format** (TSV). So you can edit your cards in your favourite
