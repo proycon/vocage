@@ -59,7 +59,8 @@ $ vocage yourdata.tsv
 ### Key Bindings
 
 * space / enter - 'Flip' the card, shows the next side (i.e. the solution)
-* Arrow down / ``j`` - Keep card on the same deck and go to the next card (a random card will be selected)
+* Arrow down / ``j`` - Keep card on the same deck and go to the next card (usually a random card unless you are in
+  ordered mode)
 * PageDown / ``J`` - Skip the card (it may be presented again immediately in the same session) and go to the next card (a random card will be selected)
 * Arrow up / ``k`` - Skip this card for now and go to the previous card
 * Arrow right / ``l`` - Promote this card to the next deck
@@ -67,6 +68,11 @@ $ vocage yourdata.tsv
 * A number key - Move the card to the n'th deck
 * ``w`` - Save progress (input files will be amended)
 * ``q`` - Quit, doesn't do any saving.
+* ``a`` - Toggle between showing all cards and showing only cards that are due (default) (``--all``)
+* ``s`` - Toggle between presenting unseen cards (default) and showing only cards that have been presented before.
+  (``--seen``)
+* `z` - Toggle between ordered mode and random mode (default) (`--ordered`). In ordered mode, cards will be presented in
+  the order they are defined.
 
 
 

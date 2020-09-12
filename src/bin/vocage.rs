@@ -55,6 +55,11 @@ fn main() {
                     .short("-s")
                     .help("Only present cards that have been previously seen (no unseen cards). Can also be toggled at runtime with 's'")
                    )
+                  .arg(Arg::with_name("ordered")
+                    .long("ordered")
+                    .short("-z")
+                    .help("Show cards in the order they are defined rather than randomly. Can also be toggled at runtime with 'z'")
+                   )
                   .get_matches();
 
 
@@ -77,6 +82,7 @@ fn main() {
     };
     let mut due_only: bool = !args.is_present("all");
     let mut seen_only: bool = args.is_present("seen");
+    let mut ordered: bool = args.is_present("ordered");
     let minimal: Option<PrintFormat> = match args.value_of("minimal") {
         None => None,
         Some("color") | Some("colour") => Some(PrintFormat::AnsiColour),
@@ -104,22 +110,46 @@ fn main() {
 
     while !done {
         if let Some(card) = match pick_specific {
-                Some((setindex, cardindex)) => datasets[setindex].cards.get_mut(cardindex),
+                Some((setindex, cardindex)) => datasets[setindex].cards.get_mut(cardindex), //pick a specific card
                 None => {
-                    //pick a random set
-                    let setindex = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
-                    //pick a random card
-                    if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only, seen_only) {
-                        duecards = totalcards;
-                        history.push((setindex,cardindex));
-                        tries = 0; //reset
-                        datasets[setindex].cards.get_mut(cardindex)
+                    if ordered {
+                        //pick a card in order
+                        let (setindex, cardindex) = history.last().unwrap_or(&(0,0));
+                        let mut nextindex = None;
+                        let mut cardindex = *cardindex;
+                        let mut setindex = *setindex;
+                        for i in setindex..datasets.len() {
+                            nextindex = datasets[i].next_index(cardindex, deck, due_only, seen_only, history.is_empty());
+                            if nextindex.is_some() {
+                                setindex = i;
+                                break;
+                            }
+                            cardindex = 0;
+                        }
+                        if let Some((cardindex,totalcards)) = nextindex {
+                            duecards = totalcards;
+                            history.push((setindex,cardindex));
+                            datasets[setindex].cards.get_mut(cardindex)
+                        } else {
+                            tries = 999; //no indeterministic factor
+                            None
+                        }
                     } else {
-                        tries += 1;
-                        None
+                        //pick a random set
+                        let setindex = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
+                        //pick a random card
+                        if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only, seen_only) {
+                            duecards = totalcards;
+                            history.push((setindex,cardindex));
+                            tries = 0; //reset
+                            datasets[setindex].cards.get_mut(cardindex)
+                        } else {
+                            tries += 1;
+                            None
+                        }
                     }
                 }
-            } {
+            } { //end match block. In ordered mode, cards will be presented in the order they are defined.
             pick_specific = None; //reset
             //show card
             let mut side: u8 = 0;
@@ -205,6 +235,14 @@ fn main() {
                              status = "Only showing cards that are due".to_owned();
                          } else {
                              status = "Showing all cards, including those not due".to_owned();
+                         }
+                     },
+                     Key::Char('z') => {
+                         ordered = !ordered;
+                         if ordered {
+                             status = "Presenting cards in predefined order".to_owned();
+                         } else {
+                             status = "Presenting cards in random order".to_owned();
                          }
                      },
                      _ => {
