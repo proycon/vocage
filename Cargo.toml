@@ -1,6 +1,6 @@
 [package]
 name = "vocage"
-version = "0.2.0"
+version = "1.0.0"
 authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
 edition = "2018"
 

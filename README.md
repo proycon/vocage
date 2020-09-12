@@ -1,3 +1,5 @@
+[![Crate](https://img.shields.io/crates/v/vocage.svg)](https://crates.io/crates/vocage)
+
 # Introduction
 
 Vocage is a simple terminal-based vocabulary-learning tool. It presents flashcards using a spaced-repetition algorithm

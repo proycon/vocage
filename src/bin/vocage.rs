@@ -18,7 +18,7 @@ static NUMCHARS: &[char] = &['1','2','3','4','5','6','7','8','9'];
 
 fn main() {
     let args = App::new("Vocage :: Flash cards")
-                  .version("0.1")
+                  .version("1.0")
                   .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>")
                   .about("A simple command-line flash card system implementing spaced-repetition (Leitner)")
                   .arg(Arg::with_name("force")
