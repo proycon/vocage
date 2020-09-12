@@ -20,8 +20,7 @@ The aim of this software is to keep things simple and minimalistic and to focus 
   Vocage itself does not provide editing facilities.
     * All lines starting with ``#`` are considered comments. This also serves to quickly disable some cards without
         actually deleting them.
-* Your learning progress is stored right inside the TSV files, simply by added one column for the deck a card is in, and one for when it is due. This keeps
-  everything in one place and makes it easy to process with external tools. You could keep your vocabulary sets in git, if you want.
+* Your learning progress is stored right inside the TSV files, simply by adding one column for the deck a card is in, and one for when it is due. This keeps everything in one place and makes it easy to process with external tools. You could keep your vocabulary sets in git, if you want.
 * Configuration is done via **command line parameters** that *can also be stored as comments at the end of the TSV file for quick loading*:
     * The columns are defined either as a header line on the very first line (in upper case!),
       or more explicitly using ``--columns``.
@@ -36,7 +35,7 @@ The aim of this software is to keep things simple and minimalistic and to focus 
   from shell scripts or other software.
 * Proper unicode support
 * Colour support, each column gets a colour (can be disabled in ``--minimal`` mode)
-* Arrow keys and vim-style movements (hjkl)
+* Arrow keys and vim-style movements (`hjkl`)
 * Written in Rust; fast & efficient
 
 ## Installation
@@ -51,6 +50,8 @@ No cargo/rust on your system yet? Do ``sudo apt install cargo`` on Debian/ubuntu
 
 
 ## Usage
+
+Type ``vocage --help`` for a full parameter overview.
 
 ### Quick Start
 
