@@ -7,7 +7,7 @@ homepage = "https://github.com/proycon/vocage/"
 repository = "https://github.com/proycon/vocage"
 documentation = "https://docs.rs/vocage"
 categories = ["command-line-utilities","visualization"]
-keywords = ["flashcards","vocabulary-learning","language-learning","linguistics", "spaced-repetition","education","tsv"]
+keywords = ["flashcards","vocabulary-learning","language-learning","education"]
 license = "GPL-3.0+"
 edition = "2018"
 
