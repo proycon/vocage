@@ -47,6 +47,7 @@ fn main() {
                   .args(&VocaSession::common_arguments())
                   .arg(Arg::with_name("minimal")
                     .takes_value(true)
+                    .short("-m")
                     .long("minimal")
                     .help("Minimal interface, no TUI, just print to stdout. The value for this parameter is either 'plain' or 'colour', the latter of which will still produce ANSI colours.")
                    )
@@ -320,7 +321,7 @@ pub fn draw(stdout: &mut impl Write, card: Option<&VocaCard>, session: &VocaSess
                    };
             if let Some(minimal) = minimal {
                 if minimal == PrintFormat::AnsiColour {
-                    write!(stdout,"{}{}{}\r\n",c,line,termion::color::Fg(color::Reset)).expect("error drawing (minimal)");
+                    write!(stdout,"{}{}{}\n",c,line,termion::color::Fg(color::Reset)).expect("error drawing (minimal)");
                 } else {
                     write!(stdout,"{}\n",line).expect("error drawing (minimal)");
                 }
@@ -362,6 +363,8 @@ pub fn draw(stdout: &mut impl Write, card: Option<&VocaCard>, session: &VocaSess
                     },
                ),
                termion::cursor::Hide).expect("error drawing");
+        } else {
+            write!(stdout,"\n").expect("error writing");
         }
     }
 
