@@ -29,7 +29,7 @@ fn main() {
                   .arg(Arg::with_name("all")
                     .long("all")
                     .short("-a")
-                    .help("Consider all cards, not only the ones that are due")
+                    .help("Consider all cards, not only the ones that are due. Can also be toggled at runtime with 'a'")
                    )
                   .arg(Arg::with_name("limit")
                     .long("limit")
@@ -52,7 +52,8 @@ fn main() {
                    )
                   .arg(Arg::with_name("seen")
                     .long("seen")
-                    .help("Only present cards that have been previously seen (no unseen cards)")
+                    .short("-s")
+                    .help("Only present cards that have been previously seen (no unseen cards). Can also be toggled at runtime with 's'")
                    )
                   .get_matches();
 
@@ -74,8 +75,8 @@ fn main() {
     } else {
         None
     };
-    let due_only: bool = !args.is_present("all");
-    let seen_only: bool = args.is_present("seen");
+    let mut due_only: bool = !args.is_present("all");
+    let mut seen_only: bool = args.is_present("seen");
     let minimal: Option<PrintFormat> = match args.value_of("minimal") {
         None => None,
         Some("color") | Some("colour") => Some(PrintFormat::AnsiColour),
@@ -190,7 +191,24 @@ fn main() {
                          }
                          break;
                      },
+                     Key::Char('s') => {
+                         seen_only = !seen_only;
+                         if seen_only {
+                             status = "Only showing cards that have been seen already".to_owned();
+                         } else {
+                             status = "Previously unseen cards will be presented again".to_owned();
+                         }
+                     },
+                     Key::Char('a') => {
+                         due_only = !due_only;
+                         if due_only {
+                             status = "Only showing cards that are due".to_owned();
+                         } else {
+                             status = "Showing all cards, including those not due".to_owned();
+                         }
+                     },
                      _ => {
+                         status = "Key not bound".to_owned();
                      }
                 };
             }
