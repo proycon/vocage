@@ -2,7 +2,7 @@
 
 # Introduction
 
-Vocage is a simple terminal-based vocabulary-learning tool. It presents flashcards using a spaced-repetition algorithm
+Vocage is a minimalistic terminal-based vocabulary-learning tool. It presents flashcards using a spaced-repetition algorithm
 (e.g. Leitner); words you know well will be presented less and less frequently and words you have problems with will be
 repeated more often. You quickly move cards/words between decks and each deck has an associated presentation interval.
 
