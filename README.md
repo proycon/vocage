@@ -48,6 +48,7 @@ cargo install vocage
 
 No cargo/rust on your system yet? Do ``sudo apt install cargo`` on Debian/ubuntu based systems, ``brew install rust`` on mac, or use [rustup](https://rustup.rs/).
 
+Arch Linux users can install vocage directly from the Arch User Repository: https://aur.archlinux.org/packages/vocage-git/  (e.g. ``yay -S vocage-git``)
 
 ## Usage
 
