@@ -310,8 +310,22 @@ impl VocaData {
             None
         };
         for (i,card) in self.cards.iter().enumerate() {
+            //make sure to process very first comments
+            if i == 0 && nextcommentindex.is_some() && nextcommentindex.unwrap() == 0 {
+                for (commentindex, comment) in self.comments.iter() {
+                    if *commentindex == 0 {
+                        file.write(comment.as_bytes())?;
+                        file.write(b"\n")?;
+                        nextcommentindex = None; //reset
+                    } else if *commentindex > 0 {
+                        nextcommentindex = Some(*commentindex); //set for next
+                        break;
+                    }
+                }
+            }
             file.write(card.write_to_string().as_bytes())?;
             file.write(b"\n")?;
+            //process remaining comments
             if nextcommentindex.is_some() && i + 1 == nextcommentindex.unwrap() {
                 for (commentindex, comment) in self.comments.iter() {
                     if *commentindex == i + 1 {
