@@ -20,7 +20,7 @@ The aim of this software is to keep things simple and minimalistic and to focus 
   Vocage itself does not provide editing facilities.
     * All lines starting with ``#`` are considered comments. This also serves to quickly disable some cards without
         actually deleting them.
-* Your learning progress is stored right inside the TSV files, simply by adding one column for the deck a card is in, and one for when it is due. This keeps everything in one place (no external configuration/library files) and makes it easy to process with external tools. You could keep your vocabulary sets in git, if you want. **Do not forget to save your progress by pressing 'w'**
+* Your learning progress is stored right inside the TSV files, simply by adding one column for the deck a card is in, and one for when it is due. This keeps everything in one place (no external configuration/library files) and makes it easy to process with external tools. You could keep your vocabulary sets in git, if you want.
 * Configuration is done via **command line parameters** that *can also be stored as comments at the end of the TSV file for quick loading*:
     * The columns are defined either as a header line on the very first line (in upper case!),
       or more explicitly using ``--columns``.
@@ -73,7 +73,8 @@ $ vocage yourdata.tsv
 * Arrow left / ``h`` - Promote this card to the previous deck
 * A number key - Move the card to the n'th deck
 * ``w`` - Save progress (input files will be amended)
-* ``q`` - Quit, doesn't do any saving.
+* ``q`` - Quit (asks for confirmation is you have unsaved changes)
+* ``Q`` - Quit (without saving, don't ask confirmation)
 * ``a`` - Toggle between showing all cards and showing only cards that are due (default) (``--all``)
 * ``s`` - Toggle between presenting unseen cards (default) and showing only cards that have been presented before.
   (``--seen``)

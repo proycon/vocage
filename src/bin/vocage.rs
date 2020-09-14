@@ -105,6 +105,9 @@ fn main() {
 
     let mut duecards = 0;
     let mut tries = 0;
+    let mut changed = false;
+    let mut confirmexitstage = false;
+    let mut pressed_q = false;
 
     //make a copy to prevent problems with the borrow checker
     let session = datasets[0].session.clone();
@@ -169,11 +172,28 @@ fn main() {
                          if pick_specific.is_some() {
                              history.push(pick_specific.clone().unwrap());
                          }
+                         changed = false;
+                         if confirmexitstage {
+                             done = true;
+                         } else {
+                             confirmexitstage = false;
+                         }
+                         break;
+                     },
+                     Key::Char('Q') => {
+                         done = true;
                          break;
                      },
                      Key::Char('q') | Key::Esc => {
-                         done = true;
-                         break;
+                         pressed_q = true;
+                         if !changed || confirmexitstage {
+                             done = true;
+                             break;
+                         } else {
+                             confirmexitstage = true;
+                             status = "Changes have not been saved yet! Press w to save or q again to force quit".to_owned();
+                             break;
+                         }
                      },
                      Key::Char(' ') | Key::Char('\n') => {
                          side += 1;
@@ -186,6 +206,7 @@ fn main() {
                      Key::Char('h') | Key::Left => {
                          if card.demote(&session) {
                              status = format!("Card demoted to deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
+                             changed = true;
                          } else {
                              status = "Already on first deck".to_owned();
                          }
@@ -194,6 +215,7 @@ fn main() {
                      Key::Char('l') | Key::Right => {
                          if card.promote(&session) {
                              status = format!("Card promoted to deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
+                             changed = true;
                          } else {
                              status = "Already on last deck".to_owned();
                          }
@@ -202,6 +224,7 @@ fn main() {
                      Key::Char('j') | Key::Down => {
                          card.move_to_deck(card.deck, &session);
                          status = format!("Card retained on deck {}: {}", card.deck+1, session.decks.get(card.deck as usize).unwrap_or(&"unspecified".to_owned())  ).to_owned();
+                         changed = true;
                          break;
                      },
                      Key::Char('J') | Key::PageDown => {
@@ -250,6 +273,9 @@ fn main() {
                          status = "Key not bound".to_owned();
                      }
                 };
+                if !pressed_q {
+                     confirmexitstage = false; //reset
+                }
             }
         } else if tries > 100 { //after a hundred attempted picks we give up
             write!(stdout, "{}{}{}{}",
