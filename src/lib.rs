@@ -223,7 +223,7 @@ impl VocaData {
     }
 
 
-    pub fn random_index(&self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool, seen_only: bool) -> Option<(usize,usize)> {
+    pub fn random_index(&self, rng: &mut impl Rng, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> Option<(usize,usize)> {
         let mut indices: Vec<usize> = Vec::new();
 
         let now: NaiveDateTime = NaiveDateTime::from_timestamp(
@@ -231,7 +231,7 @@ impl VocaData {
         );
 
         for (i, card) in self.cards.iter().enumerate() {
-            if card.is_presentable(Some(&now), deck, due_only, seen_only) {
+            if card.is_presentable(Some(&now), decks, due_only, seen_only) {
                 indices.push(i);
             }
         }
@@ -243,7 +243,7 @@ impl VocaData {
     }
 
 
-    pub fn next_index(&self, index: usize, deck: Option<u8>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<(usize,usize)> {
+    pub fn next_index(&self, index: usize, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<(usize,usize)> {
         let now: NaiveDateTime = NaiveDateTime::from_timestamp(
             SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64, 0
         );
@@ -252,7 +252,7 @@ impl VocaData {
         let mut count: usize = 0;
         for (i, card) in self.cards.iter().enumerate() {
             if (!inclusive && i > index) || (inclusive && i >= index) {
-                if card.is_presentable(Some(&now), deck, due_only, seen_only) {
+                if card.is_presentable(Some(&now), decks, due_only, seen_only) {
                     if next.is_none() {
                         next = Some(i);
                     } else {
@@ -264,29 +264,29 @@ impl VocaData {
         next.map(|i| (i, count))
     }
 
-    pub fn pick_card<'a>(&'a self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool, seen_only: bool) -> Option<&'a VocaCard> {
-        if let Some((choice,_)) = self.random_index(rng, deck, due_only, seen_only) {
+    pub fn pick_card<'a>(&'a self, rng: &mut impl Rng, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> Option<&'a VocaCard> {
+        if let Some((choice,_)) = self.random_index(rng, decks, due_only, seen_only) {
             return Some(&self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_card_mut<'a>(&'a mut self, rng: &mut impl Rng, deck: Option<u8>, due_only: bool, seen_only: bool) -> Option<&'a mut VocaCard> {
-        if let Some((choice,_)) = self.random_index(rng, deck, due_only, seen_only) {
+    pub fn pick_card_mut<'a>(&'a mut self, rng: &mut impl Rng, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> Option<&'a mut VocaCard> {
+        if let Some((choice,_)) = self.random_index(rng, decks, due_only, seen_only) {
             return Some(&mut self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_next_card<'a>(&'a self, index: usize, deck: Option<u8>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<&'a VocaCard> {
-        if let Some((choice,_)) = self.next_index(index, deck, due_only, seen_only, inclusive) {
+    pub fn pick_next_card<'a>(&'a self, index: usize, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<&'a VocaCard> {
+        if let Some((choice,_)) = self.next_index(index, decks, due_only, seen_only, inclusive) {
             return Some(&self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_next_card_mut<'a>(&'a mut self, index: usize, deck: Option<u8>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<&'a mut VocaCard> {
-        if let Some((choice,_)) = self.next_index(index, deck, due_only, seen_only, inclusive) {
+    pub fn pick_next_card_mut<'a>(&'a mut self, index: usize, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<&'a mut VocaCard> {
+        if let Some((choice,_)) = self.next_index(index, decks, due_only, seen_only, inclusive) {
             return Some(&mut self.cards[choice]);
         }
         None
@@ -525,12 +525,12 @@ impl VocaCard {
         }
     }
 
-    pub fn is_presentable(&self, now: Option<&NaiveDateTime>, deck: Option<u8>, due_only: bool, seen_only: bool) -> bool {
+    pub fn is_presentable(&self, now: Option<&NaiveDateTime>, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> bool {
         let now: NaiveDateTime = match now {
             Some(dt) => *dt,
             None => NaiveDateTime::from_timestamp( SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64, 0),
         };
-        if deck.is_none() || self.deck == deck.unwrap() {
+        if decks.is_none() || decks.unwrap().contains(&self.deck) {
             if self.due.is_none() && seen_only {
                 return false;
             }

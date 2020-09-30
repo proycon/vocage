@@ -37,6 +37,18 @@ fn main() {
                     .takes_value(true)
                     .help("Limit to this deck only (all decks will be considered by default)")
                    )
+                  .arg(Arg::with_name("firstdeck")
+                    .long("firstdeck")
+                    .short("-A")
+                    .takes_value(true)
+                    .help("Limit decks, set this as first deck (number), and ignore lower decks")
+                   )
+                  .arg(Arg::with_name("lastdeck")
+                    .long("lastdeck")
+                    .short("-Z")
+                    .takes_value(true)
+                    .help("Limit decks, set this as last deck (number), and ignore higher decks")
+                   )
                   .arg(Arg::with_name("files")
                     .help("vocabulary file (tsv)")
                     .takes_value(true)
@@ -76,8 +88,12 @@ fn main() {
         }
     }
 
-    let deck: Option<u8> = if args.is_present("limit") {
-        Some(datasets[0].session.get_deck_by_name(args.value_of("limit").unwrap()).unwrap())
+    let limit_decks: Option<Vec<u8>> = if args.is_present("limit") {
+        Some(vec!(datasets[0].session.get_deck_by_name(args.value_of("limit").unwrap()).unwrap()))
+    } else if args.is_present("firstdeck") || args.is_present("lastdeck") {
+        let firstdeck: u8 = args.value_of("firstdeck").map(|s| s.parse::<u8>().expect("expecting an integer")  - 1).unwrap_or(0);
+        let lastdeck: u8 = args.value_of("lastdeck").map(|s| s.parse::<u8>().expect("expecting an integer") ).unwrap_or(255);
+        Some((firstdeck..lastdeck).collect())
     } else {
         None
     };
@@ -123,7 +139,7 @@ fn main() {
                         let mut cardindex = *cardindex;
                         let mut setindex = *setindex;
                         for i in setindex..datasets.len() {
-                            nextindex = datasets[i].next_index(cardindex, deck, due_only, seen_only, history.is_empty());
+                            nextindex = datasets[i].next_index(cardindex, limit_decks.as_ref(), due_only, seen_only, history.is_empty());
                             if nextindex.is_some() {
                                 setindex = i;
                                 break;
@@ -142,7 +158,7 @@ fn main() {
                         //pick a random set
                         let setindex = if datasets.len() == 1 { 0 } else { rng.gen_range(0,datasets.len()) };
                         //pick a random card
-                        if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, deck, due_only, seen_only) {
+                        if let Some((cardindex,totalcards)) = datasets[setindex].random_index(&mut rng, limit_decks.as_ref(), due_only, seen_only) {
                             duecards = totalcards;
                             history.push((setindex,cardindex));
                             tries = 0; //reset
