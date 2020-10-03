@@ -73,12 +73,16 @@ fn main() {
                     .short("-z")
                     .help("Show cards in the order they are defined rather than randomly. Can also be toggled at runtime with 'z'")
                    )
+                  .arg(Arg::with_name("reset")
+                    .long("reset")
+                    .help("Reset the loaded deck, this strips the due date and deck assignment of all cards")
+                   )
                   .get_matches();
 
 
     let mut rng = thread_rng();
 
-    let mut datasets = load_files(args.values_of("files").unwrap().collect(), args.is_present("force"));
+    let mut datasets = load_files(args.values_of("files").unwrap().collect(), args.is_present("force"), args.is_present("reset"));
     for dataset in datasets.iter_mut() {
         dataset.session.set_common_arguments(&args).expect("setting common arguments");
         if dataset.session.decks.is_empty() && dataset.session.intervals.is_empty() {
@@ -100,6 +104,7 @@ fn main() {
     let mut due_only: bool = !args.is_present("all");
     let mut seen_only: bool = args.is_present("seen");
     let mut ordered: bool = args.is_present("ordered");
+    let mut reset: bool = args.is_present("reset");
     let minimal: Option<PrintFormat> = match args.value_of("minimal") {
         None => None,
         Some("color") | Some("colour") => Some(PrintFormat::AnsiColour),
@@ -129,6 +134,9 @@ fn main() {
     let session = datasets[0].session.clone();
 
     while !done {
+        if changed {
+            reset = false;
+        }
         if let Some(card) = match pick_specific {
                 Some((setindex, cardindex)) => datasets[setindex].cards.get_mut(cardindex), //pick a specific card
                 None => {
@@ -181,7 +189,7 @@ fn main() {
                 match c.unwrap() {
                      Key::Char('w') => {
                          for dataset in datasets.iter() {
-                             dataset.write().expect("failure saving file");
+                             dataset.write(reset).expect("failure saving file");
                          }
                          status = "Saved...".to_owned();
                          pick_specific = history.pop(); //make sure we re-show the current item
@@ -301,7 +309,7 @@ fn main() {
                    termion::cursor::Hide).expect("error drawing");
 
              for dataset in datasets.iter() {
-                 dataset.write().expect("failure saving file");
+                 dataset.write(reset).expect("failure saving file");
              }
              done = true;
         }

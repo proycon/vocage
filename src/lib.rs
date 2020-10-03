@@ -165,7 +165,7 @@ impl Default for VocaSession {
 }
 
 impl VocaData {
-    pub fn from_file(filename: &str) -> Result<Self,std::io::Error> {
+    pub fn from_file(filename: &str, reset: bool) -> Result<Self,std::io::Error> {
         let file = File::open(filename)?;
         let reader = BufReader::new(file);
         let mut cards: Vec<VocaCard> = Vec::new();
@@ -189,7 +189,7 @@ impl VocaData {
                     comments.push( (cards.len(), line) ); //we store the index so we can later serialise it in proper order again
                 }
             } else if !line.is_empty() {
-                let card = VocaCard::parse_line(&line)?;
+                let card = VocaCard::parse_line(&line, reset)?;
                 if i == 0 && !line.contains("deck#") && !line.contains("due@") && line == line.to_uppercase() {
                     metadata_args.push("--columns".to_owned());
                     metadata_args.push(card.fields.join(","));
@@ -294,7 +294,7 @@ impl VocaData {
 
 
 
-    pub fn write(&self) -> Result<(),std::io::Error> {
+    pub fn write(&self, reset: bool) -> Result<(),std::io::Error> {
         if self.session.filename.is_none() {
             return Err(std::io::Error::new(ErrorKind::InvalidData, "No filename configured"));
         }
@@ -323,7 +323,7 @@ impl VocaData {
                     }
                 }
             }
-            file.write(card.write_to_string(self.session.columns.len()).as_bytes())?;
+            file.write(card.write_to_string(self.session.columns.len(), reset).as_bytes())?;
             file.write(b"\n")?;
             //process remaining comments
             if nextcommentindex.is_some() && i + 1 == nextcommentindex.unwrap() {
@@ -376,7 +376,7 @@ impl VocaData {
 
 
 impl VocaCard {
-    pub fn parse_line(line: &str) -> Result<VocaCard, std::io::Error> {
+    pub fn parse_line(line: &str, reset: bool) -> Result<VocaCard, std::io::Error> {
         let mut begin = 0;
         let mut fields: Vec<String> =  Vec::new();
         let mut deck: u8 = 0;
@@ -391,18 +391,22 @@ impl VocaCard {
                     i
                 }];
                 if value.starts_with("deck#") {
-                    if let Ok(num) = &value[5..].parse::<u8>() {
-                        deck = *num - 1;
+                    if !reset {
+                        if let Ok(num) = &value[5..].parse::<u8>() {
+                            deck = *num - 1;
+                        }
                     }
                 } else if value.starts_with("due@") {
-                    due = match NaiveDateTime::parse_from_str(&value[4..], "%Y-%m-%d %H:%M:%S") {
-                        Ok(dt) => Some(dt),
-                        Err(e) => {
-                            return Err(std::io::Error::new(ErrorKind::InvalidData, format!("Unable to parse due date: {}",e)));
-                        }
-                    };
+                    if !reset {
+                        due = match NaiveDateTime::parse_from_str(&value[4..], "%Y-%m-%d %H:%M:%S") {
+                            Ok(dt) => Some(dt),
+                            Err(e) => {
+                                return Err(std::io::Error::new(ErrorKind::InvalidData, format!("Unable to parse due date: {}",e)));
+                            }
+                        };
+                    }
                 } else {
-                    if value == "-" { //empty field placeholder
+                    if value.is_empty() || value == "-" { //empty field placeholder
                         fields.push(String::new());
                     } else {
                         fields.push(value.trim().to_owned());
@@ -418,7 +422,7 @@ impl VocaCard {
         })
     }
 
-    pub fn write_to_string(&self, columncount: usize) -> String {
+    pub fn write_to_string(&self, columncount: usize, reset: bool) -> String {
         let mut result: String = String::new();
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
@@ -433,15 +437,17 @@ impl VocaCard {
         for _ in self.fields.len()..columncount {
             result += "\t";
         }
-        if self.deck > 0 {
-            result = format!("{}\tdeck#{}",result, self.deck + 1);
-        } else {
-            result += "\t";
-        }
-        if let Some(due) = self.due {
-            result = format!("{}\tdue@{}",result, due.format("%Y-%m-%d %H:%M:%S").to_string().as_str() );
-        } else {
-            result += "\t";
+        if !reset {
+            if self.deck > 0 {
+                result = format!("{}\tdeck#{}",result, self.deck + 1);
+            } else {
+                result += "\t";
+            }
+            if let Some(due) = self.due {
+                result = format!("{}\tdue@{}",result, due.format("%Y-%m-%d %H:%M:%S").to_string().as_str() );
+            } else {
+                result += "\t";
+            }
         }
         result
     }
@@ -549,7 +555,7 @@ impl VocaCard {
     }
 }
 
-pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {
+pub fn load_files(files: Vec<&str>, force: bool, reset: bool) -> Vec<VocaData> {
     let mut datasets: Vec<VocaData> = Vec::new();
 
     for filename in files.iter() {
@@ -557,7 +563,7 @@ pub fn load_files(files: Vec<&str>, force: bool) -> Vec<VocaData> {
             eprintln!("ERROR: Specified input file not does exist: {}", filename);
             std::process::exit(1);
         } else {
-            match VocaData::from_file(filename) {
+            match VocaData::from_file(filename, reset) {
                 Ok(mut data) => {
                     if !datasets.is_empty() {
                         if data.session.columns != datasets[0].session.columns {
