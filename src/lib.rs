@@ -323,7 +323,7 @@ impl VocaData {
                     }
                 }
             }
-            file.write(card.write_to_string().as_bytes())?;
+            file.write(card.write_to_string(self.session.columns.len()).as_bytes())?;
             file.write(b"\n")?;
             //process remaining comments
             if nextcommentindex.is_some() && i + 1 == nextcommentindex.unwrap() {
@@ -418,23 +418,30 @@ impl VocaCard {
         })
     }
 
-    pub fn write_to_string(&self) -> String {
+    pub fn write_to_string(&self, columncount: usize) -> String {
         let mut result: String = String::new();
         for (i, field) in self.fields.iter().enumerate() {
             if i > 0 {
                 result += "\t";
             }
-            if field.is_empty() {
-                result += "-";
+            if field.is_empty() || field == "-" {
+                result += "";
             } else {
                 result += field;
             }
         }
+        for _ in self.fields.len()..columncount {
+            result += "\t";
+        }
         if self.deck > 0 {
             result = format!("{}\tdeck#{}",result, self.deck + 1);
+        } else {
+            result += "\t";
         }
         if let Some(due) = self.due {
             result = format!("{}\tdue@{}",result, due.format("%Y-%m-%d %H:%M:%S").to_string().as_str() );
+        } else {
+            result += "\t";
         }
         result
     }
