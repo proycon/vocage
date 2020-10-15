@@ -425,6 +425,10 @@ impl VocaCard {
     pub fn write_to_string(&self, columncount: usize, reset: bool) -> String {
         let mut result: String = String::new();
         for (i, field) in self.fields.iter().enumerate() {
+            if field.is_empty() && i >= columncount {
+                //empty placeholder fields for deck and due
+                break;
+            }
             if i > 0 {
                 result += "\t";
             }

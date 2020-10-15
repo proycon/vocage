@@ -1,6 +1,6 @@
 [package]
 name = "vocage"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
 description = "A minimalistic terminal-based vocabulary learner or flashcard tool, using a spaced repetition algorithm."
 homepage = "https://github.com/proycon/vocage/"
