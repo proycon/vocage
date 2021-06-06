@@ -6,6 +6,7 @@ extern crate vocage;
 
 
 use termion::event::Key;
+use termion::screen::AlternateScreen;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode};
 use termion::color;
@@ -319,6 +320,9 @@ fn main() {
 
 
 pub fn draw(stdout: &mut impl Write, card: Option<&VocaCard>, session: &VocaSession, side: u8, status: &str, seqnr: usize, duecards: usize, minimal: Option<PrintFormat>) {
+
+    let mut stdout = AlternateScreen::from(stdout);
+
     let (width, height) = if minimal.is_none() {
         termion::terminal_size().expect("terminal size")
     } else {
