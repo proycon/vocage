@@ -9,7 +9,7 @@ repeated more often. You quickly move cards/words between decks and each deck ha
 You can use vocage for anything you'd use flashcards for and not necessarily limited
 to learning languages.
 
-The aim of this software is to keep things simple and minimalistic and to focus on one thing only (the unix philosphy).
+The aim of this software is to keep things simple and minimalistic and to focus on one thing only (the unix philosophy).
 
 ![Example of chinese vocabulary learning with vocage](screen1.gif)
 
