@@ -1,17 +1,17 @@
-extern crate rand;
-extern crate chrono;
 extern crate ansi_term;
+extern crate chrono;
 extern crate clap;
+extern crate rand;
 
-use std::fs::File;
-use std::io::{Write,BufReader,BufRead,Error,ErrorKind};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::fmt;
-use std::path::PathBuf;
-use rand::prelude::Rng;
-use chrono::NaiveDateTime;
 use ansi_term::Colour;
-use clap::{App,Arg};
+use chrono::NaiveDateTime;
+use clap::{App, Arg};
+use rand::prelude::Rng;
+use std::fmt;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
 pub struct VocaSession {
@@ -31,23 +31,23 @@ pub struct VocaSession {
 pub struct VocaData {
     pub session: VocaSession,
     pub cards: Vec<VocaCard>,
-    pub comments: Vec<(usize,String)>,
+    pub comments: Vec<(usize, String)>,
 }
 
 pub struct VocaCard {
     pub fields: Vec<String>,
     pub due: Option<NaiveDateTime>,
-    pub deck: u8
+    pub deck: u8,
 }
 
-#[derive(Debug,Copy,Clone,PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PrintFormat {
     Plain,
-    AnsiColour
+    AnsiColour,
 }
 
 impl VocaSession {
-    pub fn common_arguments<'a,'b>() -> Vec<clap::Arg<'a,'b>> {
+    pub fn common_arguments<'a, 'b>() -> Vec<clap::Arg<'a, 'b>> {
         let mut args: Vec<Arg> = Vec::new();
         args.push( Arg::with_name("showcolumns")
             .long("showcolumns")
@@ -56,11 +56,12 @@ impl VocaSession {
             .multiple(true)
             .takes_value(true)
         );
-        args.push( Arg::with_name("decks")
-            .long("decks")
-            .short("-d")
-            .help("Comma seperated list of deck names")
-            .takes_value(true)
+        args.push(
+            Arg::with_name("decks")
+                .long("decks")
+                .short("-d")
+                .help("Comma seperated list of deck names")
+                .takes_value(true),
         );
         args.push( Arg::with_name("intervals")
             .long("intervals")
@@ -68,11 +69,12 @@ impl VocaSession {
             .help("Comma seperated list of intervals for each respective deck (in minutes). Must contain as many items as --decks")
             .takes_value(true)
         );
-        args.push( Arg::with_name("columns")
-            .long("columns")
-            .short("-c")
-            .help("Comma separated list of column names.")
-            .takes_value(true)
+        args.push(
+            Arg::with_name("columns")
+                .long("columns")
+                .short("-c")
+                .help("Comma separated list of column names.")
+                .takes_value(true),
         );
         args.push( Arg::with_name("listdelimiter")
             .long("listdelimiter")
@@ -88,15 +90,27 @@ impl VocaSession {
         args
     }
 
-    pub fn set_common_arguments<'a>(&mut self, args: &clap::ArgMatches<'a>) -> Result<(),Error> {
+    pub fn set_common_arguments<'a>(&mut self, args: &clap::ArgMatches<'a>) -> Result<(), Error> {
         if let Some(decks) = args.value_of("decks") {
-            self.decks = decks.trim().split(",").map(|s| s.trim().to_owned()).collect();
+            self.decks = decks
+                .trim()
+                .split(",")
+                .map(|s| s.trim().to_owned())
+                .collect();
         }
         if let Some(intervals) = args.value_of("intervals") {
-            self.intervals = intervals.trim().split(",").map(|s| s.parse::<u32>().expect("parsing interval")).collect();
+            self.intervals = intervals
+                .trim()
+                .split(",")
+                .map(|s| s.parse::<u32>().expect("parsing interval"))
+                .collect();
         }
         if let Some(columns) = args.value_of("columns") {
-            self.columns = columns.trim().split(",").map(|s| s.trim().to_owned()).collect();
+            self.columns = columns
+                .trim()
+                .split(",")
+                .map(|s| s.trim().to_owned())
+                .collect();
         }
         if let Some(listdelimiter) = args.value_of("listdelimiter") {
             self.listdelimiter = Some(listdelimiter.to_string());
@@ -104,11 +118,27 @@ impl VocaSession {
         if let Some(showcolumns) = args.values_of("showcolumns") {
             self.showcolumns.clear();
             for showcolumns in showcolumns {
-                self.showcolumns.push(showcolumns.trim().split(",").map( |s|
-                        self.columns.iter().enumerate() .find(|&r| r.1 == s.trim() )
-                        .expect(format!("ERROR: showcolumns references a non-existing column: {}",s).as_str())
-                        .0
-                ).map(|n| n as u8 ).collect());
+                self.showcolumns.push(
+                    showcolumns
+                        .trim()
+                        .split(",")
+                        .map(|s| {
+                            self.columns
+                                .iter()
+                                .enumerate()
+                                .find(|&r| r.1 == s.trim())
+                                .expect(
+                                    format!(
+                                        "ERROR: showcolumns references a non-existing column: {}",
+                                        s
+                                    )
+                                    .as_str(),
+                                )
+                                .0
+                        })
+                        .map(|n| n as u8)
+                        .collect(),
+                );
             }
         }
         if args.is_present("returntofirst") {
@@ -117,24 +147,29 @@ impl VocaSession {
 
         //sanity checks and defaults
         if self.decks.len() > 0 && self.intervals.is_empty() {
-
         } else if self.decks.len() != self.intervals.len() {
-            return Err(Error::new(ErrorKind::InvalidData, "ERROR: intervals and decks have different length"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "ERROR: intervals and decks have different length",
+            ));
         }
 
         if self.showcolumns.is_empty() {
             //default configuration: two sides
-            self.showcolumns.push(vec!(0)); //first column on front side
-            self.showcolumns.push((1..self.columns.len()).map(|n| n as u8).collect()); //other columns on back side
+            self.showcolumns.push(vec![0]); //first column on front side
+            self.showcolumns
+                .push((1..self.columns.len()).map(|n| n as u8).collect()); //other columns on back side
         }
         Ok(())
     }
 
-    pub fn from_arguments(args: Vec<&str>) -> Result<Self,Error> {
+    pub fn from_arguments(args: Vec<&str>) -> Result<Self, Error> {
         let mut vocasession = Self::default();
         let mut args = args.clone();
-        args.insert(0,"metadata");
-        let args = App::new("metadata").args(&Self::common_arguments()).get_matches_from(args);
+        args.insert(0, "metadata");
+        let args = App::new("metadata")
+            .args(&Self::common_arguments())
+            .get_matches_from(args);
         vocasession.set_common_arguments(&args)?;
         Ok(vocasession)
     }
@@ -159,38 +194,42 @@ impl Default for VocaSession {
             filename: None,
             showcolumns: Vec::new(),
             listdelimiter: None,
-            header: false
+            header: false,
         }
     }
 }
 
 impl VocaData {
-    pub fn from_file(filename: &str, reset: bool) -> Result<Self,std::io::Error> {
+    pub fn from_file(filename: &str, reset: bool) -> Result<Self, std::io::Error> {
         let file = File::open(filename)?;
         let reader = BufReader::new(file);
         let mut cards: Vec<VocaCard> = Vec::new();
-        let mut comments: Vec<(usize,String)> = Vec::new();
+        let mut comments: Vec<(usize, String)> = Vec::new();
         let mut header: bool = false;
         let mut columncount: u8 = 0;
-        let mut metadata_args: Vec<String> = vec!();
+        let mut metadata_args: Vec<String> = vec![];
         for (i, line) in reader.lines().enumerate() {
             let line = line?;
             if line.starts_with('#') {
                 //metadata or comment
                 if line.starts_with("#--") {
                     //metadata
-                    if let Some((index,_)) = line.chars().enumerate().find(|&r| r.1 == ' ') {
-                        metadata_args.push(format!("--{}",&line[3..index]).to_owned());
-                        metadata_args.push(line[index+1..].to_owned());
+                    if let Some((index, _)) = line.chars().enumerate().find(|&r| r.1 == ' ') {
+                        metadata_args.push(format!("--{}", &line[3..index]).to_owned());
+                        metadata_args.push(line[index + 1..].to_owned());
                     } else {
-                        metadata_args.push(format!("--{}",&line[3..]).to_owned());
+                        metadata_args.push(format!("--{}", &line[3..]).to_owned());
                     }
                 } else {
-                    comments.push( (cards.len(), line) ); //we store the index so we can later serialise it in proper order again
+                    comments.push((cards.len(), line)); //we store the index so we can later serialise it in proper order again
                 }
             } else if !line.is_empty() {
-                let card = VocaCard::parse_line(&line, reset)?;
-                if i == 0 && !line.contains("deck#") && !line.contains("due@") && line == line.to_uppercase() {
+                let card = VocaCard::parse_line(&line, reset, i + 1)?;
+                if i == 0
+                    && !line.contains("deck#")
+                    && !line.contains("due@")
+                    && line == line.to_uppercase()
+                {
                     metadata_args.push("--columns".to_owned());
                     metadata_args.push(card.fields.join(","));
                     header = true
@@ -203,15 +242,21 @@ impl VocaData {
                 }
             } else {
                 //empty lines are considered comments for our purposes, we retain them in the output
-                comments.push( (cards.len(), line) );
+                comments.push((cards.len(), line));
             }
         }
         if !metadata_args.contains(&"--columns".to_owned()) {
             //no column/header information provided, infer
             metadata_args.push("--columns".to_owned());
-            metadata_args.push((1..=columncount).map(|n| format!("column#{}",n).to_owned()).collect::<Vec<String>>().join(",") );
+            metadata_args.push(
+                (1..=columncount)
+                    .map(|n| format!("column#{}", n).to_owned())
+                    .collect::<Vec<String>>()
+                    .join(","),
+            );
         }
-        let mut session = VocaSession::from_arguments(metadata_args.iter().map(|s| s.as_str()).collect())?;
+        let mut session =
+            VocaSession::from_arguments(metadata_args.iter().map(|s| s.as_str()).collect())?;
         session.header = header;
         session.filename = Some(filename.to_owned());
 
@@ -222,12 +267,21 @@ impl VocaData {
         })
     }
 
-
-    pub fn random_index(&self, rng: &mut impl Rng, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> Option<(usize,usize)> {
+    pub fn random_index(
+        &self,
+        rng: &mut impl Rng,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+    ) -> Option<(usize, usize)> {
         let mut indices: Vec<usize> = Vec::new();
 
         let now: NaiveDateTime = NaiveDateTime::from_timestamp(
-            SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64, 0
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Unable to get time")
+                .as_secs() as i64,
+            0,
         );
 
         for (i, card) in self.cards.iter().enumerate() {
@@ -242,10 +296,20 @@ impl VocaData {
         None
     }
 
-
-    pub fn next_index(&self, index: usize, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<(usize,usize)> {
+    pub fn next_index(
+        &self,
+        index: usize,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+        inclusive: bool,
+    ) -> Option<(usize, usize)> {
         let now: NaiveDateTime = NaiveDateTime::from_timestamp(
-            SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64, 0
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Unable to get time")
+                .as_secs() as i64,
+            0,
         );
 
         let mut next: Option<usize> = None;
@@ -264,52 +328,80 @@ impl VocaData {
         next.map(|i| (i, count))
     }
 
-    pub fn pick_card<'a>(&'a self, rng: &mut impl Rng, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> Option<&'a VocaCard> {
-        if let Some((choice,_)) = self.random_index(rng, decks, due_only, seen_only) {
+    pub fn pick_card<'a>(
+        &'a self,
+        rng: &mut impl Rng,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+    ) -> Option<&'a VocaCard> {
+        if let Some((choice, _)) = self.random_index(rng, decks, due_only, seen_only) {
             return Some(&self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_card_mut<'a>(&'a mut self, rng: &mut impl Rng, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> Option<&'a mut VocaCard> {
-        if let Some((choice,_)) = self.random_index(rng, decks, due_only, seen_only) {
+    pub fn pick_card_mut<'a>(
+        &'a mut self,
+        rng: &mut impl Rng,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+    ) -> Option<&'a mut VocaCard> {
+        if let Some((choice, _)) = self.random_index(rng, decks, due_only, seen_only) {
             return Some(&mut self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_next_card<'a>(&'a self, index: usize, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<&'a VocaCard> {
-        if let Some((choice,_)) = self.next_index(index, decks, due_only, seen_only, inclusive) {
+    pub fn pick_next_card<'a>(
+        &'a self,
+        index: usize,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+        inclusive: bool,
+    ) -> Option<&'a VocaCard> {
+        if let Some((choice, _)) = self.next_index(index, decks, due_only, seen_only, inclusive) {
             return Some(&self.cards[choice]);
         }
         None
     }
 
-    pub fn pick_next_card_mut<'a>(&'a mut self, index: usize, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool, inclusive: bool) -> Option<&'a mut VocaCard> {
-        if let Some((choice,_)) = self.next_index(index, decks, due_only, seen_only, inclusive) {
+    pub fn pick_next_card_mut<'a>(
+        &'a mut self,
+        index: usize,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+        inclusive: bool,
+    ) -> Option<&'a mut VocaCard> {
+        if let Some((choice, _)) = self.next_index(index, decks, due_only, seen_only, inclusive) {
             return Some(&mut self.cards[choice]);
         }
         None
     }
 
-
-
-    pub fn write(&self, reset: bool) -> Result<(),std::io::Error> {
+    pub fn write(&self, reset: bool) -> Result<(), std::io::Error> {
         if self.session.filename.is_none() {
-            return Err(std::io::Error::new(ErrorKind::InvalidData, "No filename configured"));
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                "No filename configured",
+            ));
         }
         let mut file = std::fs::File::create(self.session.filename.as_ref().unwrap().as_str())?;
         //contents
         if self.session.header {
-            file.write(self.session.columns.join("\t").as_bytes() )?;
+            file.write(self.session.columns.join("\t").as_bytes())?;
             file.write(b"\n")?;
         }
-        let mut nextcommentindex = if !self.comments.is_empty() { //initialise
+        let mut nextcommentindex = if !self.comments.is_empty() {
+            //initialise
             Some(self.comments[0].0)
         } else {
             None
         };
-        for (i,card) in self.cards.iter().enumerate() {
+        for (i, card) in self.cards.iter().enumerate() {
             //make sure to process very first comments
             if i == 0 && nextcommentindex.is_some() && nextcommentindex.unwrap() == 0 {
                 for (commentindex, comment) in self.comments.iter() {
@@ -323,7 +415,10 @@ impl VocaData {
                     }
                 }
             }
-            file.write(card.write_to_string(self.session.columns.len(), reset).as_bytes())?;
+            file.write(
+                card.write_to_string(self.session.columns.len(), reset)
+                    .as_bytes(),
+            )?;
             file.write(b"\n")?;
             //process remaining comments
             if nextcommentindex.is_some() && i + 1 == nextcommentindex.unwrap() {
@@ -342,12 +437,20 @@ impl VocaData {
         //metadata last
         if !self.session.decks.is_empty() {
             file.write(b"#--decks ")?;
-            file.write(self.session.decks.join(",").as_bytes() )?;
+            file.write(self.session.decks.join(",").as_bytes())?;
             file.write(b"\n")?;
         }
         if !self.session.intervals.is_empty() {
             file.write(b"#--intervals ")?;
-            file.write(self.session.intervals.iter().map(|s| format!("{}",s)).collect::<Vec<String>>().join(",").as_bytes() )?;
+            file.write(
+                self.session
+                    .intervals
+                    .iter()
+                    .map(|s| format!("{}", s))
+                    .collect::<Vec<String>>()
+                    .join(",")
+                    .as_bytes(),
+            )?;
             file.write(b"\n")?;
         }
         if let Some(listdelimiter) = &self.session.listdelimiter {
@@ -361,12 +464,19 @@ impl VocaData {
         if !self.session.columns.is_empty() {
             if !self.session.header {
                 file.write(b"#--columns ")?;
-                file.write(self.session.columns.join(",").as_bytes() )?;
+                file.write(self.session.columns.join(",").as_bytes())?;
                 file.write(b"\n")?;
             }
             for showcolumns in self.session.showcolumns.iter() {
                 file.write(b"#--showcolumns ")?;
-                file.write(showcolumns.iter().map(|n| format!("{}", self.session.columns[*n as usize]).to_string()).collect::<Vec<String>>().join(",").as_bytes() )?;
+                file.write(
+                    showcolumns
+                        .iter()
+                        .map(|n| format!("{}", self.session.columns[*n as usize]).to_string())
+                        .collect::<Vec<String>>()
+                        .join(",")
+                        .as_bytes(),
+                )?;
                 file.write(b"\n")?;
             }
         }
@@ -374,22 +484,17 @@ impl VocaData {
     }
 }
 
-
 impl VocaCard {
-    pub fn parse_line(line: &str, reset: bool) -> Result<VocaCard, std::io::Error> {
+    pub fn parse_line(line: &str, reset: bool, linenr: usize) -> Result<VocaCard, std::io::Error> {
         let mut begin = 0;
-        let mut fields: Vec<String> =  Vec::new();
+        let mut fields: Vec<String> = Vec::new();
         let mut deck: u8 = 0;
         let mut due: Option<NaiveDateTime> = None;
         let length = line.chars().count();
         for (j, (i, c)) in line.char_indices().enumerate() {
-            if (j == length -1) || (c == '\t')  {
+            if (j == length - 1) || (c == '\t') {
                 //handle previous column
-                let value = &line[begin..if j == length - 1 {
-                    line.len()
-                } else {
-                    i
-                }];
+                let value = &line[begin..if j == length - 1 { line.len() } else { i }];
                 if value.starts_with("deck#") {
                     if !reset {
                         if let Ok(num) = &value[5..].parse::<u8>() {
@@ -398,27 +503,32 @@ impl VocaCard {
                     }
                 } else if value.starts_with("due@") {
                     if !reset {
-                        due = match NaiveDateTime::parse_from_str(&value[4..], "%Y-%m-%d %H:%M:%S") {
+                        due = match NaiveDateTime::parse_from_str(&value[4..], "%Y-%m-%d %H:%M:%S")
+                        {
                             Ok(dt) => Some(dt),
                             Err(e) => {
-                                return Err(std::io::Error::new(ErrorKind::InvalidData, format!("Unable to parse due date: {}",e)));
+                                return Err(std::io::Error::new(
+                                    ErrorKind::InvalidData,
+                                    format!("Unable to parse due date on line {}: {}", linenr, e),
+                                ));
                             }
                         };
                     }
                 } else {
-                    if value.is_empty() || value == "-" { //empty field placeholder
+                    if value.is_empty() || value == "-" {
+                        //empty field placeholder
                         fields.push(String::new());
                     } else {
                         fields.push(value.trim().to_owned());
                     }
                 }
-                begin = i+1
+                begin = i + 1
             }
         }
-        Ok( VocaCard {
+        Ok(VocaCard {
             fields: fields,
             due: due,
-            deck: deck
+            deck: deck,
         })
     }
 
@@ -443,12 +553,16 @@ impl VocaCard {
         }
         if !reset {
             if self.deck > 0 {
-                result = format!("{}\tdeck#{}",result, self.deck + 1);
+                result = format!("{}\tdeck#{}", result, self.deck + 1);
             } else {
                 result += "\t";
             }
             if let Some(due) = self.due {
-                result = format!("{}\tdue@{}",result, due.format("%Y-%m-%d %H:%M:%S").to_string().as_str() );
+                result = format!(
+                    "{}\tdue@{}",
+                    result,
+                    due.format("%Y-%m-%d %H:%M:%S").to_string().as_str()
+                );
             } else {
                 result += "\t";
             }
@@ -462,7 +576,12 @@ impl VocaCard {
         }
         if let Some(interval) = session.intervals.get(deck as usize) {
             self.due = Some(NaiveDateTime::from_timestamp(
-                    SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64 + (interval * 60) as i64, 0
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Unable to get time")
+                    .as_secs() as i64
+                    + (interval * 60) as i64,
+                0,
             ));
         }
         self.deck = deck;
@@ -470,8 +589,8 @@ impl VocaCard {
     }
 
     pub fn promote(&mut self, session: &VocaSession) -> bool {
-        if ((self.deck+1) as usize) < session.decks.len() {
-            self.move_to_deck(self.deck+1, session);
+        if ((self.deck + 1) as usize) < session.decks.len() {
+            self.move_to_deck(self.deck + 1, session);
             true
         } else {
             self.move_to_deck(self.deck, session);
@@ -479,9 +598,9 @@ impl VocaCard {
         }
     }
 
-    pub fn demote(&mut self, session: &VocaSession)  -> bool {
+    pub fn demote(&mut self, session: &VocaSession) -> bool {
         if self.deck > 0 && !session.returntofirst {
-            self.move_to_deck(self.deck-1, session);
+            self.move_to_deck(self.deck - 1, session);
             true
         } else {
             self.move_to_deck(0, session);
@@ -489,29 +608,38 @@ impl VocaCard {
         }
     }
 
-    pub fn print(&self, side: u8, session: &VocaSession, format: PrintFormat, wraplist: bool) -> Result<(), std::fmt::Error> {
+    pub fn print(
+        &self,
+        side: u8,
+        session: &VocaSession,
+        format: PrintFormat,
+        wraplist: bool,
+    ) -> Result<(), std::fmt::Error> {
         let output = self.fields_to_str(side, session, wraplist)?;
         for (index, output) in output {
             match format {
-                PrintFormat::Plain => println!("{}",output),
-                PrintFormat::AnsiColour => {
-                    match index {
-                        0 => println!("{}",Colour::Green.paint(output).to_string()),
-                        1 => println!("{}",Colour::Cyan.paint(output).to_string()),
-                        2 => println!("{}",Colour::Yellow.paint(output).to_string()),
-                        3 => println!("{}",Colour::Purple.paint(output).to_string()),
-                        4 => println!("{}",Colour::Blue.paint(output).to_string()),
-                        _ => println!("{}",output),
-                    }
-                }
+                PrintFormat::Plain => println!("{}", output),
+                PrintFormat::AnsiColour => match index {
+                    0 => println!("{}", Colour::Green.paint(output).to_string()),
+                    1 => println!("{}", Colour::Cyan.paint(output).to_string()),
+                    2 => println!("{}", Colour::Yellow.paint(output).to_string()),
+                    3 => println!("{}", Colour::Purple.paint(output).to_string()),
+                    4 => println!("{}", Colour::Blue.paint(output).to_string()),
+                    _ => println!("{}", output),
+                },
             }
         }
         Ok(())
     }
 
-    pub fn fields_to_str(&self, side: u8, session: &VocaSession, wraplist: bool) -> Result<Vec<(u8,&str)>, std::fmt::Error> {
+    pub fn fields_to_str(
+        &self,
+        side: u8,
+        session: &VocaSession,
+        wraplist: bool,
+    ) -> Result<Vec<(u8, &str)>, std::fmt::Error> {
         if let Some(showcolumns) = session.showcolumns.get(side as usize) {
-            let mut output: Vec<(u8,&str)> = Vec::new();
+            let mut output: Vec<(u8, &str)> = Vec::new();
             for showcolumn in showcolumns.iter() {
                 let lines = self.field_to_str(*showcolumn, session, wraplist)?;
                 for line in lines {
@@ -524,17 +652,21 @@ impl VocaCard {
         }
     }
 
-
-    pub fn field_to_str(&self, index: u8, session: &VocaSession, wraplist: bool) -> Result<Vec<&str>, std::fmt::Error> {
+    pub fn field_to_str(
+        &self,
+        index: u8,
+        session: &VocaSession,
+        wraplist: bool,
+    ) -> Result<Vec<&str>, std::fmt::Error> {
         if let Some(field) = self.fields.get(index as usize) {
             let output: Vec<&str> = if let Some(listdelimiter) = &session.listdelimiter {
                 if wraplist {
                     field.split(listdelimiter.as_str()).collect()
                 } else {
-                    vec!(field.as_str())
+                    vec![field.as_str()]
                 }
             } else {
-                vec!(field.as_str())
+                vec![field.as_str()]
             };
             Ok(output)
         } else {
@@ -542,10 +674,22 @@ impl VocaCard {
         }
     }
 
-    pub fn is_presentable(&self, now: Option<&NaiveDateTime>, decks: Option<&Vec<u8>>, due_only: bool, seen_only: bool) -> bool {
+    pub fn is_presentable(
+        &self,
+        now: Option<&NaiveDateTime>,
+        decks: Option<&Vec<u8>>,
+        due_only: bool,
+        seen_only: bool,
+    ) -> bool {
         let now: NaiveDateTime = match now {
             Some(dt) => *dt,
-            None => NaiveDateTime::from_timestamp( SystemTime::now().duration_since(UNIX_EPOCH).expect("Unable to get time").as_secs() as i64, 0),
+            None => NaiveDateTime::from_timestamp(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Unable to get time")
+                    .as_secs() as i64,
+                0,
+            ),
         };
         if decks.is_none() || decks.unwrap().contains(&self.deck) {
             if self.due.is_none() && seen_only {
@@ -596,5 +740,3 @@ pub fn load_files(files: Vec<&str>, force: bool, reset: bool) -> Vec<VocaData> {
 
     datasets
 }
-
-
