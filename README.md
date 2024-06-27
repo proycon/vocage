@@ -43,7 +43,7 @@ The aim of this software is to keep things simple and minimalistic and to focus 
 Install vocage using Rust's package manager:
 
 ```
-cargo install vocage
+cargo install --locked vocage
 ```
 
 No cargo/rust on your system yet? Do ``sudo apt install cargo`` on Debian/ubuntu based systems, ``brew install rust`` on mac, or use [rustup](https://rustup.rs/).
